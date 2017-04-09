@@ -16,13 +16,15 @@ int main(int argc, char *argv[], char *envp[]) {
 	if (image.empty())
 		std::cout << "failed to open img.jpg" << std::endl;
 	
-	Mat imgBw = image;
-	cvtColor(image, imgBw, CV_BGR2GRAY);
-	////threshold(imgBw, imgBw, 128, 255, THRESH_BINARY);
+	//Mat imgBw = image;
+
 	//imshow("threshold", imgBw);
 	//
-	QrReader theQrReader = QrReader();
-	theQrReader.find(imgBw);
+	QrReader theQrReader = QrReader(image);
+	theQrReader.find();
+
+
+
 	cout << "Finish" << endl;
 	////char a;
 	////cin >> a;
