@@ -18,12 +18,18 @@
     <ClInclude Include="QrReader.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="FinderPattern.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="QrReader.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="FinderPattern.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

@@ -12,7 +12,16 @@ int main(int argc, char *argv[], char *envp[]) {
 	//Mat image = imread("C:\\Users\\leonh\\Source\\Repos\\qrcode\\QRCodeReader\\5.png");
 	//Mat image = imread("C:\\Users\\leonh\\OneDrive\\Bildung&Beruf\\2017 Erasmus Comillas\\Computer Vision\\project\\qrcode - datasets\\datasets\\lighting\\20110817_013.jpg");
 	//Mat image = imread("C:\\Users\\leonh\\OneDrive\\Bildung&Beruf\\2017 Erasmus Comillas\\Computer Vision\\project\\qrcode - datasets\\datasets\\lighting\\20110817_013.jpg");
-	Mat image = imread("20110817_013.jpg");
+	//Mat image = imread("20110817_013.jpg");
+	//Mat image = imread("IMG_20120226_165408.jpg");
+	//Mat image = imread("IMG_2743.JPG");
+	Mat image = imread("IMG_2713.JPG");
+	//Mat image = imread("");
+	//Mat image = imread("");
+	//Mat image = imread("");
+	//Mat image = imread("");
+	//Mat image = imread("");
+	//Mat image = imread("");
 	if (image.empty())
 		std::cout << "failed to open img.jpg" << std::endl;
 	
@@ -21,8 +30,8 @@ int main(int argc, char *argv[], char *envp[]) {
 	//imshow("threshold", imgBw);
 	//
 	QrReader theQrReader = QrReader(image);
-	theQrReader.find();
-
+	std::cout << theQrReader.find();
+	//imshow("image", image);
 
 
 	cout << "Finish" << endl;

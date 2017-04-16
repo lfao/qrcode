@@ -133,9 +133,11 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="FinderPattern.h" />
     <ClInclude Include="QrReader.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="FinderPattern.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="QrReader.cpp" />
   </ItemGroup>
