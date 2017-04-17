@@ -4,7 +4,12 @@ import itertools
 import functools
 import operator
 import math
-import qrtools
+#import sys, qrcode
+#from qrtools import QR
+#import pyqrcode
+#import qrtools
+#import zbarlight
+
 
 
 #
@@ -44,7 +49,14 @@ def cross_product(pointA, pointB, pointC):
 if __name__ == '__main__':
     #filename = 'sample.jpg'
     filename = 'IMG_2713.jpg'
+    #filename = 'IMG_2713gedreht.JPG'
     image = cv2.imread(filename,-1)
+    
+    #rows,cols, _ = image.shape
+
+    #M = cv2.getRotationMatrix2D((cols/2,rows/2),180,1)
+    #image = cv2.warpAffine(image,M,(cols,rows))
+
     #image2 = cv2.resize(image, (200, 200))
     image2 = cv2.resize(image, (800, 800))
     gray = cv2.cvtColor(image2,cv2.COLOR_RGB2GRAY)
@@ -94,48 +106,31 @@ if __name__ == '__main__':
                     max_differences = (max(values, key = operator.itemgetter(2)) for categorie, values in grouped_corners)
                     corners_coordinates = [coordinates for (_ , _ , _ , coordinates) in max_differences]
                     yield corners_coordinates
-            corners_coordinates_list = list(corners_iterable())
+            ccl = numpy.array(list(corners_iterable()))
+            print ccl
+            #ccl = numpy.roll(ccl,2,1)
+            print ccl
             
-            print corners_coordinates_list
-            
-            [[topleft_topleft,topleft_topright,topleft_bottomleft,_], [topright_topleft, topright_topright, _ ,topright_bottomright ],[_ ,bottomleft_topleft ,bottomleft_bottomleft, bottomleft_bottomright]] = corners_coordinates_list
             tl = 0
             tr = 1
             bl = 2
             br = 3
-            ccl = corners_coordinates_list
-            
-            print topright_topright, topright_bottomright ,bottomleft_bottomleft, bottomleft_bottomright
 
-            def cross((v1x, v1y), (v2x, v2y)):
-                return float(v1x) * float(v2y) - float(v1y) * float(v2x)
-            def sub((v1x, v1y), (v2x, v2y)):
-                return v1x - v2x, v1y - v2y
-            def add((v1x, v1y), (v2x, v2y)):
-                return v1x + v2x, v1y + v2y
-            def neg((v1x, v1y)):
-                return -v1x, -v1y
-            def mult(t, (v1x, v1y)):
-                return t * v1x, t * v1y 
             
+            topright_dif =   ccl[tr][tr] - ccl[tr][br]
+            bottomleft_dif = ccl[bl][bl] - ccl[bl][br]   
             
-            topright_dif =   sub(topright_topright, topright_bottomright)
-            bottomleft_dif = sub(bottomleft_bottomleft, bottomleft_bottomright)
-            #bottomleft_dif_neg
-           
-            print topright_bottomright, topright_topright, bottomleft_bottomright, bottomleft_bottomleft
-            
-            if cross(topright_dif, bottomleft_dif) != 0:
-                t = cross(sub(bottomleft_bottomleft, topright_topright),bottomleft_dif) / cross(topright_dif, bottomleft_dif)
-                bottomright_bottomright = add(topright_topright, mult(t, topright_dif))
+            if numpy.linalg.det([topright_dif, bottomleft_dif]) != 0:
+                t = numpy.linalg.det([ccl[bl][bl] - ccl[tr][tr], bottomleft_dif]) / numpy.linalg.det([topright_dif, bottomleft_dif])
+                bottomright_bottomright = ccl[tr][tr] + t * topright_dif
                 print bottomright_bottomright
 
-                source = numpy.array([topleft_topleft, topright_topright, bottomright_bottomright, bottomleft_bottomleft], dtype = "float32")
+                source = numpy.array([ccl[tl][tl], ccl[tr][tr], bottomright_bottomright, ccl[bl][bl]], dtype = "float32")
 
-                topleft_width  = (euklied_distance(ccl[tl][tl],ccl[tl][tr]) + euklied_distance(ccl[tl][bl],ccl[tl][br]) + euklied_distance(ccl[tr][tl],ccl[tr][tr]) + euklied_distance(ccl[tr][bl],ccl[tr][br])) / 4
-                top_width =   (euklied_distance(ccl[tl][tl],ccl[tr][tr]) + euklied_distance(ccl[tl][bl],ccl[tr][br])) / 2
-                topleft_heigth = (euklied_distance(ccl[tl][tl],ccl[tl][bl]) + euklied_distance(ccl[tl][tr],ccl[tl][br]) + euklied_distance(ccl[bl][tl],ccl[bl][bl]) + euklied_distance(ccl[bl][tr],ccl[bl][br])) / 4
-                left_heigth = (euklied_distance(ccl[tl][tl],ccl[bl][bl]) + euklied_distance(ccl[tl][tr],ccl[bl][br])) / 2
+                topleft_width  = (numpy.linalg.norm(ccl[tl][tl]-ccl[tl][tr]) + numpy.linalg.norm(ccl[tl][bl]-ccl[tl][br]) + numpy.linalg.norm(ccl[tr][tl]-ccl[tr][tr]) + numpy.linalg.norm(ccl[tr][bl]-ccl[tr][br])) / 4
+                top_width =      (numpy.linalg.norm(ccl[tl][tl]-ccl[tr][tr]) + numpy.linalg.norm(ccl[tl][bl]-ccl[tr][br])) / 2
+                topleft_heigth = (numpy.linalg.norm(ccl[tl][tl]-ccl[tl][bl]) + numpy.linalg.norm(ccl[tl][tr]-ccl[tl][br]) + numpy.linalg.norm(ccl[bl][tl]-ccl[bl][bl]) + numpy.linalg.norm(ccl[bl][tr]-ccl[bl][br])) / 4
+                left_heigth =    (numpy.linalg.norm(ccl[tl][tl]-ccl[bl][bl]) + numpy.linalg.norm(ccl[tl][tr]-ccl[bl][br])) / 2
                 pixelcount_horizontal = top_width / topleft_width * 7
                 pixelcount_vertical = left_heigth / topleft_heigth * 7
                 
@@ -143,43 +138,24 @@ if __name__ == '__main__':
                 pixelmean = int(round((pixelcount_horizontal + pixelcount_vertical) / 2))
                 print pixelmean
 
-
-
-                width = heigth = pixelmean * 10
+                width = heigth = pixelmean * 8
                 destination = numpy.array([(0, 0), (width, 0), (width, heigth), (0, heigth)], dtype = "float32")
     
-
-
-
-
-
                 print source, destination
                 warp_matrix = cv2.getPerspectiveTransform(source, destination);
-                qr_raw = cv2.warpPerspective(image2, warp_matrix, (width, heigth));
-                #qr = cv2.copyMakeBorder(qr_raw, 10, 10, 10, 10,cv2.BORDER_CONSTANT, value = [255, 255, 255]);	
-                qr = qr_raw
-                qr_gray = cv2.cvtColor(qr,cv2.COLOR_RGB2GRAY);
+                qr_raw = cv2.warpPerspective(image2, warp_matrix, (width, heigth));	
+                qr_gray = cv2.cvtColor(qr_raw,cv2.COLOR_RGB2GRAY);
                 _ ,qr_thres = cv2.threshold(qr_gray, 127, 255, cv2.THRESH_BINARY);
                 qr_small = cv2.resize(qr_thres, (pixelmean, pixelmean))
                 a ,qr_thres_small = cv2.threshold(qr_small, 127, 255, cv2.THRESH_BINARY);
-                cv2.imshow("qrtres", qr_thres)# cv2.resize(qr_thres, (10*width, 10*heigth)))
-                cv2.imshow("small", qr_thres_small)
+                #cv2.imshow("qrtres", qr_thres)# cv2.resize(qr_thres, (10*width, 10*heigth)))
+                #cv2.imshow("small", qr_thres_small)
                 cv2.imshow("big", cv2.resize(qr_thres_small, (width, heigth), interpolation = cv2.INTER_NEAREST))
 
                 # decoding
-                qr = qrtools.QR()
-                qr.decode(qr_thres_small)
-                print qr.data
-                
-            #def getIntersectionPoint(a1, a2, b1, b2):
-            #    p = a1
-            #    q = b1
-            #    r = a2-a1
-            #    s = b2-b1
-
-            #    if(cross(r,s) == 0): return None
-
-            #    t = cross(q-p,s) / cross(r,s)
+                #qr = qrtools.QR()
+                #qr.cecode(qr_thres_small)
+                #print qr.data
 
             #    return p + t*r
 
