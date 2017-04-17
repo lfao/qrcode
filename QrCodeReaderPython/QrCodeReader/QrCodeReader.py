@@ -40,10 +40,11 @@ def cross_product(pointA, pointB, pointC):
 
 
 if __name__ == '__main__':
-    filename = 'sample.jpg'
-    #filename = 'IMG_2713klein.jpg'
+    #filename = 'sample.jpg'
+    filename = 'IMG_2713.jpg'
     image = cv2.imread(filename,-1)
-    image2 = cv2.resize(image, (200, 200))
+    #image2 = cv2.resize(image, (200, 200))
+    image2 = cv2.resize(image, (800, 800))
     gray = cv2.cvtColor(image2,cv2.COLOR_RGB2GRAY)
     edges = cv2.Canny(gray,100,200)
     cv2.imshow("canny", edges)
@@ -59,12 +60,9 @@ if __name__ == '__main__':
             count +=1
         return count
     
-    #depts = [getdept(i) for i in xrange(len(hierachy[0]))] 
-    #maxDet = max(depts)
-    #marks = [i for i in xrange(len(hierachy[0])) if depts[i] >= 5]
-
     marks = [i for i in xrange(len(hierachy[0])) if getDept(i) >= 5]
     
+    print marks
     if len(marks) >= 3:
         marks = marks[0:3]
 
@@ -74,11 +72,6 @@ if __name__ == '__main__':
         topleft, topright, bottomleft = point_list
 
         slope = line_slope(mc[bottomleft], mc[topright])
-        #if 0 > cross_product(mc[bottomleft], mc[topleft], mc[topright]):
-        #    bottomleft, topright = topright, bottomleft
-
-        #print mc[bottomleft], mc[topleft], mc[topright]
- 
 
         relevant = [(contours[pattern], mc[pattern]) for pattern in  point_list]
         
@@ -130,12 +123,12 @@ if __name__ == '__main__':
                 print bottomright_bottomright
                 
                 source = numpy.array([topleft_topleft, topright_topright, bottomright_bottomright, bottomleft_bottomleft], dtype = "float32")
-                width = heigth = 200
+                width = heigth = 255
                 destination = numpy.array([(0, 0), (width, 0), (width, heigth), (0, heigth)], dtype = "float32")
     
                 print source, destination
                 warp_matrix = cv2.getPerspectiveTransform(source, destination);
-                qr_raw = cv2.warpPerspective(image, warp_matrix, (255, 255));
+                qr_raw = cv2.warpPerspective(image2, warp_matrix, (width, heigth));
                 #qr = cv2.copyMakeBorder(qr_raw, 10, 10, 10, 10,cv2.BORDER_CONSTANT, value = [255, 255, 255]);	
                 qr = qr_raw
                 qr_gray = cv2.cvtColor(qr,cv2.COLOR_RGB2GRAY);
