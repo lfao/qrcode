@@ -4,6 +4,8 @@ import itertools
 import functools
 import operator
 import math
+import qrtools
+
 
 #
 def tupelsub(left, right):
@@ -96,7 +98,12 @@ if __name__ == '__main__':
             
             print corners_coordinates_list
             
-            [[topleft_topleft,_,_,_], [_, topright_topright, _ ,topright_bottomright ],[_ ,_ ,bottomleft_bottomleft, bottomleft_bottomright]] = corners_coordinates_list
+            [[topleft_topleft,topleft_topright,topleft_bottomleft,_], [topright_topleft, topright_topright, _ ,topright_bottomright ],[_ ,bottomleft_topleft ,bottomleft_bottomleft, bottomleft_bottomright]] = corners_coordinates_list
+            tl = 0
+            tr = 1
+            bl = 2
+            br = 3
+            ccl = corners_coordinates_list
             
             print topright_topright, topright_bottomright ,bottomleft_bottomleft, bottomleft_bottomright
 
@@ -110,7 +117,8 @@ if __name__ == '__main__':
                 return -v1x, -v1y
             def mult(t, (v1x, v1y)):
                 return t * v1x, t * v1y 
-
+            
+            
             topright_dif =   sub(topright_topright, topright_bottomright)
             bottomleft_dif = sub(bottomleft_bottomleft, bottomleft_bottomright)
             #bottomleft_dif_neg
@@ -121,11 +129,30 @@ if __name__ == '__main__':
                 t = cross(sub(bottomleft_bottomleft, topright_topright),bottomleft_dif) / cross(topright_dif, bottomleft_dif)
                 bottomright_bottomright = add(topright_topright, mult(t, topright_dif))
                 print bottomright_bottomright
-                
+
                 source = numpy.array([topleft_topleft, topright_topright, bottomright_bottomright, bottomleft_bottomleft], dtype = "float32")
-                width = heigth = 255
+
+                topleft_width  = (euklied_distance(ccl[tl][tl],ccl[tl][tr]) + euklied_distance(ccl[tl][bl],ccl[tl][br]) + euklied_distance(ccl[tr][tl],ccl[tr][tr]) + euklied_distance(ccl[tr][bl],ccl[tr][br])) / 4
+                top_width =   (euklied_distance(ccl[tl][tl],ccl[tr][tr]) + euklied_distance(ccl[tl][bl],ccl[tr][br])) / 2
+                topleft_heigth = (euklied_distance(ccl[tl][tl],ccl[tl][bl]) + euklied_distance(ccl[tl][tr],ccl[tl][br]) + euklied_distance(ccl[bl][tl],ccl[bl][bl]) + euklied_distance(ccl[bl][tr],ccl[bl][br])) / 4
+                left_heigth = (euklied_distance(ccl[tl][tl],ccl[bl][bl]) + euklied_distance(ccl[tl][tr],ccl[bl][br])) / 2
+                pixelcount_horizontal = top_width / topleft_width * 7
+                pixelcount_vertical = left_heigth / topleft_heigth * 7
+                
+
+                pixelmean = int(round((pixelcount_horizontal + pixelcount_vertical) / 2))
+                print pixelmean
+
+
+
+                width = heigth = pixelmean * 10
                 destination = numpy.array([(0, 0), (width, 0), (width, heigth), (0, heigth)], dtype = "float32")
     
+
+
+
+
+
                 print source, destination
                 warp_matrix = cv2.getPerspectiveTransform(source, destination);
                 qr_raw = cv2.warpPerspective(image2, warp_matrix, (width, heigth));
@@ -133,7 +160,17 @@ if __name__ == '__main__':
                 qr = qr_raw
                 qr_gray = cv2.cvtColor(qr,cv2.COLOR_RGB2GRAY);
                 _ ,qr_thres = cv2.threshold(qr_gray, 127, 255, cv2.THRESH_BINARY);
-                cv2.imshow("qrtres", qr_thres)
+                qr_small = cv2.resize(qr_thres, (pixelmean, pixelmean))
+                a ,qr_thres_small = cv2.threshold(qr_small, 127, 255, cv2.THRESH_BINARY);
+                cv2.imshow("qrtres", qr_thres)# cv2.resize(qr_thres, (10*width, 10*heigth)))
+                cv2.imshow("small", qr_thres_small)
+                cv2.imshow("big", cv2.resize(qr_thres_small, (width, heigth), interpolation = cv2.INTER_NEAREST))
+
+                # decoding
+                qr = qrtools.QR()
+                qr.decode(qr_thres_small)
+                print qr.data
+                
             #def getIntersectionPoint(a1, a2, b1, b2):
             #    p = a1
             #    q = b1
