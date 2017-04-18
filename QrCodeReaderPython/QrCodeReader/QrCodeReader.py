@@ -4,17 +4,13 @@ import itertools
 import functools
 import operator
 import math
-#import sys, qrcode
-#from qrtools import QR
-#import pyqrcode
-#import qrtools
-#import zbarlight
 
 def extract_qr_bin(image, output = True):
     BL, TL, TR, BR = range(4)
 
     def order_gen((horizontal, vertical)):
-        return (0 if horizontal else 2) + (1 if horizontal == vertical else 0)
+        return ((0 if vertical else 2) + (1 if horizontal == vertical else 0) + 3) % 4
+        #return (2 if vertical else 0) + (0 if horizontal == vertical else 1)
 
     image2 = cv2.resize(image, (800, 800))
     gray = cv2.cvtColor(image2,cv2.COLOR_RGB2GRAY)
@@ -32,26 +28,23 @@ def extract_qr_bin(image, output = True):
             count +=1
         return count
     
+    # Finding Finder Pattern
     marks = [i for i in xrange(len(hierachy[0])) if getDept(i) >= 5]
     if len(marks) != 3:
         print("Detected {} of 3 required pattern".format(len(marks)))
         return None
 
-    distance_iterator = ((numpy.linalg.norm(contour_centers[bottomleft] - contour_centers[topright]), (bottomleft, topleft, topright)) 
+    
+    distance_iterator = ((numpy.linalg.norm(contour_centers[bottomleft] - contour_centers[topright]), (bottomleft,topleft, topright)) 
                         for bottomleft, topleft, topright in itertools.permutations(marks)
                         if 0 < numpy.cross(contour_centers[topright] - contour_centers[topleft], contour_centers[bottomleft] - contour_centers[topleft]))
 
     _ , point_list = max(distance_iterator)
-    bottomleft, _, topright = point_list
-    
-    orientation = -order_gen(contour_centers[topright] > contour_centers[bottomleft])
-    
-    print contour_centers[bottomleft],  contour_centers[topright] , contour_centers[bottomleft] - contour_centers[topright]
-    dx, dy = contour_centers[bottomleft] - contour_centers[topright]
-    slope = dy/dx
-    #slope = operator.div(*reversed(contour_centers[bottomleft] - contour_centers[topright]))
+    bottomleft, topleft, topright = point_list
 
-    print slope , "Slope"
+    horizontal_vector = contour_centers[topright] - contour_centers[topleft]
+    verticial_vector = contour_centers[bottomleft] - contour_centers[topleft]
+
     relevant = [(contours[pattern], contour_centers[pattern]) for pattern in point_list]
         
     if any(cv2.contourArea(contour) < 10 for contour, _ in relevant):
@@ -60,26 +53,14 @@ def extract_qr_bin(image, output = True):
     
     def pattern_iterable():
         for contour, point in relevant:
-            x, y, w, h = cv2.boundingRect(contour)
-            if 1./5 < abs(slope) < 5:
-                middle = numpy.array([ x + w / 2, y + h / 2])
-                categorie_tuple_list = ((middle < contour_point, contour_point) for [contour_point] in contour)
-            else:
-                a, b = numpy.array([x,y]), numpy.array([x + w, y]) # c, d = [x + w, y + h / 2], [x + w / 2, y + h]
-                ac, bd = numpy.array([w, h]), numpy.array([-w, h])
-                
-
-                categorie_tuple_list = (([numpy.cross(ac, contour_point - a) > 0, numpy.cross(bd, contour_point - b) > 0], contour_point) for [contour_point] in contour)
-
+            categorie_tuple_list = (([numpy.cross(verticial_vector, contour_point - point) > 0, numpy.cross(horizontal_vector, contour_point - point) > 0], contour_point) for [contour_point] in contour)
             categorie_distance_tuple_list = ((order_gen(bool_tuple), numpy.linalg.norm(point - contour_point), contour_point) for bool_tuple, contour_point in categorie_tuple_list)
             corner_selection_tuple_list = itertools.groupby(sorted(categorie_distance_tuple_list, key = operator.itemgetter(0)), operator.itemgetter(0))
             corner_points_tuple_list = (max(values, key = operator.itemgetter(1)) for categorie, values in corner_selection_tuple_list)
             corner_coordinate_list = [coordinates for _ , _  , coordinates in corner_points_tuple_list]
             yield corner_coordinate_list
             
-    pattern_corner_list = numpy.array(list(pattern_iterable()))
-    pattern_corner_list = numpy.roll(pattern_corner_list,orientation,1)
-            
+    pattern_corner_list = numpy.array(list(pattern_iterable()))      
     tr_r_dif = pattern_corner_list[TR][TR] - pattern_corner_list[TR][BR]
     bl_b_dif = pattern_corner_list[BL][BL] - pattern_corner_list[BL][BR]   
             
@@ -105,7 +86,8 @@ def extract_qr_bin(image, output = True):
     
     warp_matrix = cv2.getPerspectiveTransform(source, destination);
     qr_raw = cv2.warpPerspective(image2, warp_matrix, (temp_warp_size, temp_warp_size));	
-    qr_gray = cv2.cvtColor(qr_raw,cv2.COLOR_RGB2GRAY);
+    #qr_gray = cv2.cvtColor(qr_raw,cv2.COLOR_RGB2GRAY);
+    qr_gray = qr_raw
     _ ,qr_thres = cv2.threshold(qr_gray, 127, 255, cv2.THRESH_BINARY);
     qr_small = cv2.resize(qr_thres, (pixelcount, pixelcount))
     a ,qr_thres_small = cv2.threshold(qr_small, 127, 255, cv2.THRESH_BINARY);
@@ -126,13 +108,13 @@ def extract_qr_content(binary):
 
 if __name__ == '__main__':
     #filename = 'sample.jpg'
-    filename = 'IMG_2713.jpg'
+    #filename = 'IMG_2713.jpg'
     #filename = 'IMG_2713gedreht.JPG'
     filename = '45degree.jpg'
     image = cv2.imread(filename,-1)
     
     rows,cols, _ = image.shape
-    angle = 270
+    angle = 235
     M = cv2.getRotationMatrix2D((cols/2,rows/2),angle,1)
     image = cv2.warpAffine(image,M,(cols,rows))
 
