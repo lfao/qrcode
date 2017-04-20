@@ -21,7 +21,12 @@ def extract_qr_bin(image, output = False):
     if len(marks) != 3: # check if 3 and only 3 finder pattern have been found
         print("Detected {} Finder Pattern. Exact 3 are required!".format(len(marks)))
         return None
-    
+
+   # checking if size is enough for getting good values
+    if any(cv2.contourArea(contours[mark]) < 10 for mark in marks):
+        print("Some of the detected Finder Pattern are to small!")
+        return None    
+
     # calculating the center of the contour of each pattern
     moments_list = (cv2.moments(contours[mark]) for mark in marks)
     unsorted_center_list = numpy.array([ (moments['m10']/moments['m00'], moments['m01']/moments['m00']) 
@@ -31,22 +36,18 @@ def extract_qr_bin(image, output = False):
     distance_patternlist_tuple_list = ((numpy.linalg.norm(unsorted_center_list[pattern_triple[BL]] - unsorted_center_list[pattern_triple[TR]]), pattern_triple) # generating a tuple of distance and the patterntriple
             for pattern_triple in itertools.permutations(range(3)) # iterating through permutations of possible matchings
             if 0 < numpy.cross(unsorted_center_list[pattern_triple[TR]] - unsorted_center_list[pattern_triple[TL]], # filtering for clockwise matchings (TL TR BL)
-                               unsorted_center_list[pattern_triple[BL]] - unsorted_center_list[pattern_triple[TL]]))
+                               unsorted_center_list[pattern_triple[BL]] - unsorted_center_list[pattern_triple[TL]])) 
+                                # https://math.stackexchange.com/questions/285346/why-does-cross-product-tell-us-about-clockwise-or-anti-clockwise-rotation
 
     # take the pattern tripple of the one with the greatest distance between BottomLeft and TopRight
     _ , pattern_triple = max(distance_patternlist_tuple_list) 
 
-    pattern_contour_list = [contours   [marks   [pattern]] for pattern in pattern_triple]
+    pattern_contour_list = (contours   [marks   [pattern]] for pattern in pattern_triple)
     pattern_center_list  = [unsorted_center_list[pattern]  for pattern in pattern_triple]
 
     # calculating horizontal and vertical vectors for the alligned qr code
     horizontal_vector = pattern_center_list[TR] - pattern_center_list[TL]
     verticial_vector =  pattern_center_list[BL] - pattern_center_list[TL]
-
-    # checking if size is enough for getting good values
-    if any(cv2.contourArea(pattern_contour) < 10 for pattern_contour in pattern_contour_list):
-        print("Some of the detected Finder Pattern are to small!")
-        return None
     
     # extracting 4 corners for each pattern
     def pattern_iterable():
