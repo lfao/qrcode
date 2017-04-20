@@ -12,51 +12,52 @@ def extract_qr_bin(image, output = False):
     edges = cv2.Canny(image_gray, 100, 200)
     _, contours, [hierachy] = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-    # calculating the center of each contour
-    moments_list = (cv2.moments(contour) for contour in contours)
-    contour_centers = numpy.array([ (moments['m10']/moments['m00'], moments['m01']/moments['m00']) 
-                                   if moments['m00'] != 0 else (float('inf'), float('inf')) for moments in moments_list])   
-
-    # finding Finder Pattern which is a 5 times nested contour
     def get_dept(index):
         return get_dept(hierachy[index][2]) + 1 if hierachy[index][2] >= 0 else 0
-    
+
+    # finding Finder Pattern which is a 5 times nested contour
     marks = [i for i in xrange(len(hierachy)) if get_dept(i) == 5]
+
     if len(marks) != 3: # check if 3 and only 3 finder pattern have been found
         print("Detected {} Finder Pattern. Exact 3 are required!".format(len(marks)))
         return None
     
+    # calculating the center of the contour of each pattern
+    moments_list = (cv2.moments(contours[mark]) for mark in marks)
+    unsorted_center_list = numpy.array([ (moments['m10']/moments['m00'], moments['m01']/moments['m00']) 
+                                   if moments['m00'] != 0 else (float('inf'), float('inf')) for moments in moments_list])
 
-    # matching the Finter Pattern to the corners  #TL, TR, BL
-    distance_patternlist_tuple_list = ((numpy.linalg.norm(contour_centers[pattern_triple[BL]] - contour_centers[pattern_triple[TR]]), pattern_triple) # generating a tuple of distance and the patterntriple
-            for pattern_triple in itertools.permutations(marks) # iterating through permutations of possible matchings
-            if 0 < numpy.cross(contour_centers[pattern_triple[TR]] - contour_centers[pattern_triple[TL]], # filtering for clockwise matchings (TL TR BL)
-                               contour_centers[pattern_triple[BL]] - contour_centers[pattern_triple[TL]]))
+    # matching the Finter Pattern to the corners  TL, TR, BL
+    distance_patternlist_tuple_list = ((numpy.linalg.norm(unsorted_center_list[pattern_triple[BL]] - unsorted_center_list[pattern_triple[TR]]), pattern_triple) # generating a tuple of distance and the patterntriple
+            for pattern_triple in itertools.permutations(range(3)) # iterating through permutations of possible matchings
+            if 0 < numpy.cross(unsorted_center_list[pattern_triple[TR]] - unsorted_center_list[pattern_triple[TL]], # filtering for clockwise matchings (TL TR BL)
+                               unsorted_center_list[pattern_triple[BL]] - unsorted_center_list[pattern_triple[TL]]))
 
     # take the pattern tripple of the one with the greatest distance between BottomLeft and TopRight
     _ , pattern_triple = max(distance_patternlist_tuple_list) 
 
+    pattern_contour_list = [contours   [marks   [pattern]] for pattern in pattern_triple]
+    pattern_center_list  = [unsorted_center_list[pattern]  for pattern in pattern_triple]
 
     # calculating horizontal and vertical vectors for the alligned qr code
-    horizontal_vector = contour_centers[pattern_triple[TR]] - contour_centers[pattern_triple[TL]]
-    verticial_vector =  contour_centers[pattern_triple[BL]] - contour_centers[pattern_triple[TL]]
+    horizontal_vector = pattern_center_list[TR] - pattern_center_list[TL]
+    verticial_vector =  pattern_center_list[BL] - pattern_center_list[TL]
 
     # checking if size is enough for getting good values
-    if any(cv2.contourArea(contours[pattern]) < 10 for pattern in pattern_triple):
+    if any(cv2.contourArea(pattern_contour) < 10 for pattern_contour in pattern_contour_list):
         print("Some of the detected Finder Pattern are to small!")
         return None
     
     # extracting 4 corners for each pattern
-    contour_center_tuple_list = ((contours[pattern], contour_centers[pattern]) for pattern in pattern_triple)
     def pattern_iterable():
-        for contour, center in contour_center_tuple_list:
+        for contour, center in itertools.izip(pattern_contour_list , pattern_center_list):
             # creating triples of:  
             #   an tuple of bools indicating if they are up or down, left or right. Sorting these ascending will cause the order TL, TR, BL, BR
             #       therefore the sign of the crossproduct of two vectors is used: http://stackoverflow.com/questions/3838319/how-can-i-check-if-a-point-is-below-a-line-or-not
             #   the distance between this contour point and the Finder Pattern center 
             #   the contour point
             categorie_distance_point_triple_list = (((numpy.cross(horizontal_vector, contour_point - center) > 0, numpy.cross(verticial_vector, contour_point - center) < 0), 
-                                               numpy.linalg.norm(contour_point - center), contour_point) for [contour_point] in contour)
+                                                      numpy.linalg.norm(contour_point - center), contour_point) for [contour_point] in contour)
             
             # sorting and matching the triples into 4 groups of each corner by using the bool tuple (false, false) vs. (false, true) vs. (true, false) vs (true, true)
             corner_selection_tuple_list = itertools.groupby(sorted(categorie_distance_point_triple_list, key = operator.itemgetter(0)), operator.itemgetter(0))
@@ -64,9 +65,6 @@ def extract_qr_bin(image, output = False):
             # taking the contour point with the longest distance to the center for each corner. 
             # The key of each categorie is not required since the order is implicit like the definitions of TL TR BL BR
             corner_points_triple_list = (max(values, key = operator.itemgetter(1)) for _ , values in corner_selection_tuple_list)
-            
-            corner_points_triple_list = list(corner_points_triple_list)
-            print corner_points_triple_list
 
             # remove the bool tuple and the distance and store only the corner coordinates in a list
             corner_coordinate_list = [coordinates for _ , _  , coordinates in corner_points_triple_list]
@@ -93,7 +91,7 @@ def extract_qr_bin(image, output = False):
                                   numpy.linalg.norm(pattern_corner_list[TL][BL]-pattern_corner_list[TR][BR]), 
                                   numpy.linalg.norm(pattern_corner_list[TL][TL]-pattern_corner_list[BL][BL]), 
                                   numpy.linalg.norm(pattern_corner_list[TL][TR]-pattern_corner_list[BL][BR])])
-    pixelcount = int(round(size_average / pattern_average * 7))
+    pixelcount = int(round(size_average / pattern_average * 7)) # the width and the heigth of Finder Pattern is 7. Use the rule of three
 
     
     # defining the warp destination square which is 8*8 times the number of pixels in the clean qr code
