@@ -3,7 +3,16 @@ import cv2
 import itertools
 import operator
 
-def extract_qr_bin(image, output = False):
+def extract_qr_bin(image, output_size = None):
+    '''
+    Extract a matrix of boolean values for a QR Code.
+    Every boolean is associated to one point of the QR code.
+    Keyword arguments:
+    image -- The index in hierachy to check
+    output_size (Default None) The size of the picture in the output for debug reasons. None if no pictures should be printed on the screen
+    Returns:
+    A numpy matrix with boolean value for every point in the QR code
+    '''
     #Definitions TopLeft, TopRight, BottomLeft, BottomRight are required for indexing of Finder Pattern itself or Finder Pattern corners
     TL, TR, BL, BR = range(4) 
 
@@ -13,6 +22,13 @@ def extract_qr_bin(image, output = False):
     _, contours, [hierachy] = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
     def get_dept(index):
+        '''
+        Looks for the amount of childs in hierachy for a certain index
+        Keyword arguments:
+        index -- The index in hierachy to check
+        Returns:
+        The amount of childs of the selected index
+        '''
         return get_dept(hierachy[index][2]) + 1 if hierachy[index][2] >= 0 else 0
 
     # finding Finder Pattern which is a 5 times nested contour
@@ -50,7 +66,12 @@ def extract_qr_bin(image, output = False):
     verticial_vector =  pattern_center_list[BL] - pattern_center_list[TL]
     
     # extracting 4 corners for each pattern
-    def pattern_iterable():
+    def pattern_corner_generator():
+        '''
+        Generates a list of 4 corner for each pattern
+        Returns:
+        A generator for the lists of corners
+        '''
         for contour, center in itertools.izip(pattern_contour_list , pattern_center_list):
             # creating triples of:  
             #   an tuple of bools indicating if they are up or down, left or right. Sorting these ascending will cause the order TL, TR, BL, BR
@@ -60,7 +81,8 @@ def extract_qr_bin(image, output = False):
             categorie_distance_point_triple_list = (((numpy.cross(horizontal_vector, contour_point - center) > 0, numpy.cross(verticial_vector, contour_point - center) < 0), 
                                                       numpy.linalg.norm(contour_point - center), contour_point) for [contour_point] in contour)
             
-            # sorting and matching the triples into 4 groups of each corner by using the bool tuple (false, false) vs. (false, true) vs. (true, false) vs (true, true)
+            # sorting and matching the triples into 4 groups of each corner by using the bool tuple
+            # (false, false) <=> TL vs. (false, true) <=> TR vs. (true, false) <=> BL vs (true, true) <=> BR
             corner_selection_tuple_list = itertools.groupby(sorted(categorie_distance_point_triple_list, key = operator.itemgetter(0)), operator.itemgetter(0))
             
             # taking the contour point with the longest distance to the center for each corner. 
@@ -75,7 +97,7 @@ def extract_qr_bin(image, output = False):
     # [patternindex][cornerindex]
     # patternindices are TL, TR, BL
     # conrerindices  are TL, TR, BL, BR 
-    pattern_corner_list = numpy.array(list(pattern_iterable()))
+    pattern_corner_list = numpy.array(list(pattern_corner_generator()))
 
     # extrapolation of the bottom right corner http://stackoverflow.com/questions/563198/how-do-you-detect-where-two-line-segments-intersect
     tr_r_dif_vertical = pattern_corner_list[TR][TR] - pattern_corner_list[TR][BR]
@@ -111,8 +133,7 @@ def extract_qr_bin(image, output = False):
     # extracting the data
     data = numpy.asarray(qr, dtype="bool")
 
-    if output:
-        output_size = 400
+    if output_size:
         cv2.imshow("resized",cv2.resize(image_resized, (output_size,output_size)))
         cv2.imshow("gray",cv2.resize(image_gray , (output_size,output_size)))
         cv2.imshow("canny", cv2.resize(edges, (output_size,output_size)))
@@ -133,7 +154,7 @@ if __name__ == '__main__':
     #filename = 'IMG_2712.JPG' # wall, not flat, very high slope , little warping error    
 
     image = cv2.imread(filename,-1)
-    binary = extract_qr_bin(image, True)
+    binary = extract_qr_bin(image, 400)
     print binary
 
     cv2.waitKey(0)
