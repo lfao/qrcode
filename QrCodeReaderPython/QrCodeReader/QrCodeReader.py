@@ -29,7 +29,8 @@ def extract_qr_bin(image, output_size = None):
         Returns:
         The amount of childs of the selected index
         '''
-        return get_dept(hierachy[index][2]) + 1 if hierachy[index][2] >= 0 else 0
+        # the child is stored in hierachy at inner index = 2, it is negative if it has no child
+        return get_dept(hierachy[index][2]) + 1 if hierachy[index][2] >= 0 else 0 
 
     # finding Finder Pattern which is a 5 times nested contour
     marks = [i for i in xrange(len(hierachy)) if get_dept(i) == 5]
@@ -49,19 +50,21 @@ def extract_qr_bin(image, output_size = None):
                                    if moments['m00'] != 0 else (float('inf'), float('inf')) for moments in moments_list])
 
     # matching the Finter Pattern to the corners  TL, TR, BL
-    distance_patternlist_tuple_list = ((numpy.linalg.norm(unsorted_center_list[pattern_triple[BL]] - unsorted_center_list[pattern_triple[TR]]), pattern_triple) # generating a tuple of distance and the patterntriple
-            for pattern_triple in itertools.permutations(range(3)) # iterating through permutations of possible matchings
-            if 0 < numpy.cross(unsorted_center_list[pattern_triple[TR]] - unsorted_center_list[pattern_triple[TL]], # filtering for clockwise matchings (TL TR BL)
-                               unsorted_center_list[pattern_triple[BL]] - unsorted_center_list[pattern_triple[TL]])) 
+    distance_patternlist_tuple_list = ((numpy.linalg.norm(unsorted_center_list[patternindex_triple[BL]] - unsorted_center_list[patternindex_triple[TR]]), patternindex_triple) # generating a tuple of distance and the patterntriple
+            for patternindex_triple in itertools.permutations(range(3)) # iterating through permutations of possible matchings
+            if 0 < numpy.cross(unsorted_center_list[patternindex_triple[TR]] - unsorted_center_list[patternindex_triple[TL]], # filtering for clockwise matchings (TL TR BL)
+                               unsorted_center_list[patternindex_triple[BL]] - unsorted_center_list[patternindex_triple[TL]])) 
                                 # https://math.stackexchange.com/questions/285346/why-does-cross-product-tell-us-about-clockwise-or-anti-clockwise-rotation
 
     # take the pattern tripple of the one with the greatest distance between BottomLeft and TopRight
-    _ , pattern_triple = max(distance_patternlist_tuple_list) 
+    _ , patternindex_triple = max(distance_patternlist_tuple_list) 
 
-    pattern_contour_list = (contours   [marks   [pattern]] for pattern in pattern_triple)
-    pattern_center_list  = [unsorted_center_list[pattern]  for pattern in pattern_triple]
+    # Reordering the and selecting the reqired contours and centers
+    pattern_contour_list = (contours   [marks   [pattern]] for pattern in patternindex_triple)
+    pattern_center_list  = [unsorted_center_list[pattern]  for pattern in patternindex_triple]
 
     # calculating horizontal and vertical vectors for the alligned qr code
+    # this does not reqire to be exact
     horizontal_vector = pattern_center_list[TR] - pattern_center_list[TL]
     verticial_vector =  pattern_center_list[BL] - pattern_center_list[TL]
     
@@ -100,6 +103,7 @@ def extract_qr_bin(image, output_size = None):
     pattern_corner_list = numpy.array(list(pattern_corner_generator()))
 
     # extrapolation of the bottom right corner http://stackoverflow.com/questions/563198/how-do-you-detect-where-two-line-segments-intersect
+    # This must be very exact
     tr_r_dif_vertical = pattern_corner_list[TR][TR] - pattern_corner_list[TR][BR]
     bl_b_dif_horizontal = pattern_corner_list[BL][BL] - pattern_corner_list[BL][BR]   
     t = float(numpy.cross(pattern_corner_list[BL][BL] - pattern_corner_list[TR][TR], bl_b_dif_horizontal)) / numpy.cross(tr_r_dif_vertical, bl_b_dif_horizontal)
@@ -108,7 +112,7 @@ def extract_qr_bin(image, output_size = None):
     # defining the warp source quadrangle
     source = numpy.array([pattern_corner_list[TL][TL], pattern_corner_list[TR][TR], br_br, pattern_corner_list[BL][BL]], dtype = "float32")
     
-    # calculating the number of pixels in the clean qr code
+    # calculating the number of pixels in the clean qr code. This must be very exact
     pattern_average = numpy.mean([numpy.linalg.norm(pattern_corner_list[i][j]-pattern_corner_list[i][k]) for i in xrange(3) for j, k in [(TL,TR),(BL,BR),(TL,BL),(TR,BR)]])
     size_average    = numpy.mean([numpy.linalg.norm(pattern_corner_list[TL][TL]-pattern_corner_list[TR][TR]),  
                                   numpy.linalg.norm(pattern_corner_list[TL][BL]-pattern_corner_list[TR][BR]), 
