@@ -1,77 +1,94 @@
 import numpy
 import cv2
 import itertools
-import functools
 import operator
-import math
 
 def extract_qr_bin(image, output = False):
-    TL, TR, BL, BR = range(4)
+    #Definitions TopLeft, TopRight, BottomLeft, BottomRight are required for indexing of Finder Pattern itself or Finder Pattern corners
+    TL, TR, BL, BR = range(4) 
 
     image_resized = cv2.resize(image, (800, 800))
-    image_gray = cv2.cvtColor(image_resized,cv2.COLOR_RGB2GRAY)
-    edges = cv2.Canny(image_gray,100,200)
-    _, contours, [hierachy] = cv2.findContours(edges,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+    image_gray = cv2.cvtColor(image_resized, cv2.COLOR_RGB2GRAY)
+    edges = cv2.Canny(image_gray, 100, 200)
+    _, contours, [hierachy] = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
-    # calculating the center of ech contour
-    contour_centers = numpy.array([ (moments['m10']/moments['m00'], moments['m01']/moments['m00']) if moments['m00'] != 0 else (float('inf'), float('inf')) 
-        for moments in  (cv2.moments(contour, False) for contour in contours) ])
-    
+    # calculating the center of each contour
+    moments_list = (cv2.moments(contour) for contour in contours)
+    contour_centers = numpy.array([ (moments['m10']/moments['m00'], moments['m01']/moments['m00']) 
+                                   if moments['m00'] != 0 else (float('inf'), float('inf')) for moments in moments_list])   
+
     # finding Finder Pattern which is a 5 times nested contour
-    def getDept(index):
-        count = 0;
-        while hierachy[index][2] >= 0:
-            index = hierachy[index][2];
-            count +=1
-        return count
+    def get_dept(index):
+        return get_dept(hierachy[index][2]) + 1 if hierachy[index][2] >= 0 else 0
     
-    marks = [i for i in xrange(len(hierachy)) if getDept(i) >= 5]
-    if len(marks) != 3: # check if 3 and only 3 pattern have been found
-        print("Detected {} of 3 required pattern".format(len(marks)))
+    marks = [i for i in xrange(len(hierachy)) if get_dept(i) == 5]
+    if len(marks) != 3: # check if 3 and only 3 finder pattern have been found
+        print("Detected {} Finder Pattern. Exact 3 are required!".format(len(marks)))
         return None
     
-    # matching the Finter Pattern to the corners
-    distance_iterator = ((numpy.linalg.norm(contour_centers[bottomleft] - contour_centers[topright]), (topleft, topright, bottomleft)) 
-                        for bottomleft, topleft, topright in itertools.permutations(marks)
-                        if 0 < numpy.cross(contour_centers[topright] - contour_centers[topleft], contour_centers[bottomleft] - contour_centers[topleft]))
 
-    _ , point_list = max(distance_iterator)
+    # matching the Finter Pattern to the corners  #TL, TR, BL
+    distance_patternlist_tuple_list = ((numpy.linalg.norm(contour_centers[pattern_triple[BL]] - contour_centers[pattern_triple[TR]]), pattern_triple) # generating a tuple of distance and the patterntriple
+            for pattern_triple in itertools.permutations(marks) # iterating through permutations of possible matchings
+            if 0 < numpy.cross(contour_centers[pattern_triple[TR]] - contour_centers[pattern_triple[TL]], # filtering for clockwise matchings (TL TR BL)
+                               contour_centers[pattern_triple[BL]] - contour_centers[pattern_triple[TL]]))
+
+    # take the pattern tripple of the one with the greatest distance between BottomLeft and TopRight
+    _ , pattern_triple = max(distance_patternlist_tuple_list) 
+
 
     # calculating horizontal and vertical vectors for the alligned qr code
-    topleft, topright, bottomleft = point_list
-    horizontal_vector = contour_centers[topright] - contour_centers[topleft]
-    verticial_vector = contour_centers[bottomleft] - contour_centers[topleft]
-
+    horizontal_vector = contour_centers[pattern_triple[TR]] - contour_centers[pattern_triple[TL]]
+    verticial_vector =  contour_centers[pattern_triple[BL]] - contour_centers[pattern_triple[TL]]
 
     # checking if size is enough for getting good values
-    if any(cv2.contourArea(contours[pattern]) < 10 for pattern in point_list):
-        print("Some of the detected pattern are to small.")
+    if any(cv2.contourArea(contours[pattern]) < 10 for pattern in pattern_triple):
+        print("Some of the detected Finder Pattern are to small!")
         return None
     
     # extracting 4 corners for each pattern
-    contour_center_tuple_list = ((contours[pattern], contour_centers[pattern]) for pattern in point_list)
+    contour_center_tuple_list = ((contours[pattern], contour_centers[pattern]) for pattern in pattern_triple)
     def pattern_iterable():
         for contour, center in contour_center_tuple_list:
-            categorie_distance_tuple_list = (((numpy.cross(horizontal_vector, contour_point - center) > 0, numpy.cross(verticial_vector, contour_point - center) < 0), 
-                                               numpy.linalg.norm(center - contour_point), contour_point) for [contour_point] in contour)
-            corner_selection_tuple_list = itertools.groupby(sorted(categorie_distance_tuple_list, key = operator.itemgetter(0)), operator.itemgetter(0))
-            corner_points_tuple_list = (max(values, key = operator.itemgetter(1)) for categorie, values in corner_selection_tuple_list)
-            corner_coordinate_list = [coordinates for _ , _  , coordinates in corner_points_tuple_list]
-            yield corner_coordinate_list
+            # creating triples of:  
+            #   an tuple of bools indicating if they are up or down, left or right. Sorting these ascending will cause the order TL, TR, BL, BR
+            #       therefore the sign of the crossproduct of two vectors is used: http://stackoverflow.com/questions/3838319/how-can-i-check-if-a-point-is-below-a-line-or-not
+            #   the distance between this contour point and the Finder Pattern center 
+            #   the contour point
+            categorie_distance_point_triple_list = (((numpy.cross(horizontal_vector, contour_point - center) > 0, numpy.cross(verticial_vector, contour_point - center) < 0), 
+                                               numpy.linalg.norm(contour_point - center), contour_point) for [contour_point] in contour)
             
-    pattern_corner_list = numpy.array(list(pattern_iterable()))     
+            # sorting and matching the triples into 4 groups of each corner by using the bool tuple (false, false) vs. (false, true) vs. (true, false) vs (true, true)
+            corner_selection_tuple_list = itertools.groupby(sorted(categorie_distance_point_triple_list, key = operator.itemgetter(0)), operator.itemgetter(0))
+            
+            # taking the contour point with the longest distance to the center for each corner. 
+            # The key of each categorie is not required since the order is implicit like the definitions of TL TR BL BR
+            corner_points_triple_list = (max(values, key = operator.itemgetter(1)) for _ , values in corner_selection_tuple_list)
+            
+            corner_points_triple_list = list(corner_points_triple_list)
+            print corner_points_triple_list
 
-    # extrapolation of the bottom right corner
-    tr_r_dif = pattern_corner_list[TR][TR] - pattern_corner_list[TR][BR]
-    bl_b_dif = pattern_corner_list[BL][BL] - pattern_corner_list[BL][BR]   
-    t = float(numpy.cross(pattern_corner_list[BL][BL] - pattern_corner_list[TR][TR], bl_b_dif)) / numpy.cross(tr_r_dif, bl_b_dif)
-    br_br = pattern_corner_list[TR][TR] + t * tr_r_dif
+            # remove the bool tuple and the distance and store only the corner coordinates in a list
+            corner_coordinate_list = [coordinates for _ , _  , coordinates in corner_points_triple_list]
+            yield corner_coordinate_list
+    
+    # creating a 2D numpy matrix whose first index is the Finder Pattern and the second index is the corner 
+    # [patternindex][cornerindex]
+    # patternindices are TL, TR, BL
+    # conrerindices  are TL, TR, BL, BR 
+    pattern_corner_list = numpy.array(list(pattern_iterable()))
+
+    # extrapolation of the bottom right corner http://stackoverflow.com/questions/563198/how-do-you-detect-where-two-line-segments-intersect
+    tr_r_dif_vertical = pattern_corner_list[TR][TR] - pattern_corner_list[TR][BR]
+    bl_b_dif_horizontal = pattern_corner_list[BL][BL] - pattern_corner_list[BL][BR]   
+    t = float(numpy.cross(pattern_corner_list[BL][BL] - pattern_corner_list[TR][TR], bl_b_dif_horizontal)) / numpy.cross(tr_r_dif_vertical, bl_b_dif_horizontal)
+    br_br = pattern_corner_list[TR][TR] + t * tr_r_dif_vertical
 
     # defining the warp source quadrangle
     source = numpy.array([pattern_corner_list[TL][TL], pattern_corner_list[TR][TR], br_br, pattern_corner_list[BL][BL]], dtype = "float32")
     
     # calculating the number of pixels in the clean qr code
-    pattern_average = numpy.mean([numpy.linalg.norm(pattern_corner_list[i][j]-pattern_corner_list[i][k]) for i in xrange(3) for j, k in [(0,1),(2,3),(0,2),(1,3)]])
+    pattern_average = numpy.mean([numpy.linalg.norm(pattern_corner_list[i][j]-pattern_corner_list[i][k]) for i in xrange(3) for j, k in [(TL,TR),(BL,BR),(TL,BL),(TR,BR)]])
     size_average    = numpy.mean([numpy.linalg.norm(pattern_corner_list[TL][TL]-pattern_corner_list[TR][TR]),  
                                   numpy.linalg.norm(pattern_corner_list[TL][BL]-pattern_corner_list[TR][BR]), 
                                   numpy.linalg.norm(pattern_corner_list[TL][TL]-pattern_corner_list[BL][BL]), 
@@ -96,41 +113,30 @@ def extract_qr_bin(image, output = False):
     data = numpy.asarray(qr, dtype="bool")
 
     if output:
-        cv2.imshow("resized",image_resized)
-        cv2.imshow("gray",image_gray )
-        cv2.imshow("canny", edges)
+        output_size = 400
+        cv2.imshow("resized",cv2.resize(image_resized, (output_size,output_size)))
+        cv2.imshow("gray",cv2.resize(image_gray , (output_size,output_size)))
+        cv2.imshow("canny", cv2.resize(edges, (output_size,output_size)))
         cv2.imshow("bigqr_nottresholded", bigqr_nottresholded)
         cv2.imshow("bigqr", bigqr)
+        cv2.imshow("qr small", qr, )
         cv2.imshow("qr", cv2.resize(qr, (temp_warp_size, temp_warp_size), interpolation = cv2.INTER_NEAREST))
+        cv2.imwrite("output.jpg",qr)
     return data
-
-def extract_qr_content(binary):
-    dimension , _ = binary.shape
-    version_field = binary[dimension - 9 : dimension - 12 : -1, 5::-1]
-    x = version_field.reshape((18,))
-    print x
-    print numpy.sum(2**numpy.arange(len(x))*x)
 
 
 if __name__ == '__main__':
-    #filename = 'sample.jpg'
-    filename = 'IMG_2713.jpg'
-    #filename = 'IMG_2713gedreht.JPG'
-    #filename = '45degree.jpg'
+
+    #filename = '45degree.jpg' # easy
+    #filename = 'IMG_2713.jpg' # chair
+    filename = 'IMG_2717.JPG' # wall
+    #filename = 'IMG_2716.JPG' # keyboard , little extrapolation error
+    #filename = 'IMG_2712.JPG' # wall, not flat, very high slope , little warping error    
+
     image = cv2.imread(filename,-1)
-    
-    #rows,cols, _ = image.shape
-    #angle = 90
-    #M = cv2.getRotationMatrix2D((cols/2,rows/2),angle,1)
-    #image = cv2.warpAffine(image,M,(cols,rows))
-
     binary = extract_qr_bin(image, True)
-    if image is numpy.array:
-        extract_qr_content(binary)
-        # decoding
-    #qr = qrtools.QR()
-    #qr.cecode(qr_thres_small)
-    #print qr.data
+    print binary
 
-    #    return p + t*r
     cv2.waitKey(0)
+
+
