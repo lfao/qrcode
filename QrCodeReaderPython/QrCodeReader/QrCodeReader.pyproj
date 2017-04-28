@@ -32,7 +32,6 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="IMG_2713.JPG" />
-    <Content Include="IMG_2713gedreht.JPG" />
     <Content Include="IMG_2713klein.jpg" />
     <Content Include="sample.jpg" />
   </ItemGroup>

@@ -2,6 +2,7 @@ import numpy
 import cv2
 import itertools
 import operator
+import functools
 
 def extract_qr_bin(image, output_size = None):
     '''
@@ -118,9 +119,10 @@ def extract_qr_bin(image, output_size = None):
                                   numpy.linalg.norm(pattern_corner_list[TL][BL]-pattern_corner_list[TR][BR]), 
                                   numpy.linalg.norm(pattern_corner_list[TL][TL]-pattern_corner_list[BL][BL]), 
                                   numpy.linalg.norm(pattern_corner_list[TL][TR]-pattern_corner_list[BL][BR])])
-    pixelcount = int(round(size_average / pattern_average * 7)) # the width and the heigth of Finder Pattern is 7. Use the rule of three
-
     
+    pixelestimated = size_average / pattern_average * 7 # the width and the heigth of Finder Pattern is 7. Use the rule of three
+    pixelcount = int(round((pixelestimated - 17) / 4)) * 4 + 17 # only pixelcounts of 4 * Version + 17 are allowed => round to this number
+
     # defining the warp destination square which is 8*8 times the number of pixels in the clean qr code
     temp_warp_size = pixelcount * 8
     destination = numpy.array([(0, 0), (temp_warp_size, 0), (temp_warp_size, temp_warp_size), (0, temp_warp_size)], dtype = "float32")
@@ -130,12 +132,12 @@ def extract_qr_bin(image, output_size = None):
     bigqr_nottresholded = cv2.warpPerspective(image_gray, warp_matrix, (temp_warp_size, temp_warp_size));	
     _ ,bigqr = cv2.threshold(bigqr_nottresholded, 127, 255, cv2.THRESH_BINARY);
     
-    #resizing to the real amount of pixels and thresholding again
+    # resizing to the real amount of pixels and thresholding again
     qr_notresholded = cv2.resize(bigqr, (pixelcount, pixelcount))
     a ,qr = cv2.threshold(qr_notresholded, 127, 255, cv2.THRESH_BINARY);
     
     # extracting the data
-    data = numpy.asarray(qr, dtype="bool")
+    inverted_data = numpy.asarray(qr, dtype="bool")
 
     if output_size:
         cv2.imshow("resized",cv2.resize(image_resized, (output_size,output_size)))
@@ -146,7 +148,96 @@ def extract_qr_bin(image, output_size = None):
         cv2.imshow("qr small", qr, )
         cv2.imshow("qr", cv2.resize(qr, (temp_warp_size, temp_warp_size), interpolation = cv2.INTER_NEAREST))
         cv2.imwrite("output.jpg",qr)
-    return data
+    return numpy.logical_not(inverted_data)
+
+def extract_data(data):
+    MASK_FUNCTIONS = [
+        lambda row, column : (row + column) % 2 == 0 ,
+        lambda row, column : (row) % 2 == 0 ,
+        lambda row, column : (column) % 3 == 0 ,
+        lambda row, column : (row + column) % 3 == 0 ,
+        lambda row, column : ( numpy.floor(row / 2) + numpy.floor(column / 3) ) % 2 == 0 ,
+        lambda row, column : ((row * column) % 2) + ((row * column) % 3) == 0 ,
+        lambda row, column : ( ((row * column) % 2) + ((row * column) % 3) ) % 2 == 0 ,
+        lambda row, column : ( ((row + column) % 2) + ((row * column) % 3) ) % 2 == 0
+        ]
+
+    def extract_int(iterator, n):
+        return functools.reduce(lambda sum, value: sum * 2 + value, itertools.islice(iterator,n), 0)
+    
+    def extract_ints(numpy_array, start_bit, word_count, word_len):
+        mydata = numpy_array[start_bit:(start_bit + word_count * word_len)].reshape(word_count, word_len)
+        weight = 2 ** numpy.arange(word_len - 1, -1 , -1)
+        return numpy.sum(weight * mydata, 1)
+
+    
+    size, _ = data.shape
+    version = (size - 17) / 4
+    #print size, version
+    byte_len = 8
+    format_info = numpy.append(data[[range(6) + [7,8],8]], data[8, [7, 5, 4, 3, 2, 1, 0]])
+    format_info = numpy.logical_xor([False, True, False, False, True, False, False, False, False, False, True, False, True, False, True], format_info, format_info)
+    mask =  extract_int(format_info[11:14], 3)   
+    #print mask 
+    #print format_info
+
+    value_indicator = numpy.ones(data.shape, dtype=bool)
+    value_indicator[6, :] = False
+    value_indicator[:, 6] = False
+    value_indicator[:9, :9] = False
+    value_indicator[size - 8 :, : 9] = False
+    value_indicator[: 9, size - 8 :] = False
+    
+    def indicate_alginment(row,column) :
+        value_indicator[column - 2: column + 3, row - 2: row + 3] = False
+    
+    if version > 1 :
+        aligment_middle_start = 6
+        aligment_middle_end = size - 7
+        indicate_alginment(aligment_middle_end,aligment_middle_end)
+        
+
+    mask_matrix = numpy.fromfunction(MASK_FUNCTIONS[mask],data.shape)
+    mask_matrix = numpy.logical_and(mask_matrix, value_indicator, mask_matrix)
+    
+    
+    cv2.imshow("data raw", cv2.resize(numpy.logical_not(data).astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))    
+    cv2.imshow("mask", cv2.resize(numpy.logical_not(mask_matrix).astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))
+    cv2.imshow("ausgeblendet", cv2.resize(value_indicator.astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))
+    
+    data = numpy.logical_xor(data, mask_matrix, data)
+    cv2.imshow("data", cv2.resize(numpy.logical_not(data).astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))
+    
+    
+    index_upgen   = [(i % 2, size - 1 - i / 2) for i in xrange(2 * size)]
+    index_downgen = [(i % 2,            i / 2) for i in xrange(2 * size)]    
+    index_gens_right = itertools.izip(xrange(size - 1, 7, -2), itertools.cycle([index_upgen, index_downgen]))
+    index_gens_left  = itertools.izip(xrange(5,        0, -2), itertools.cycle([index_downgen, index_upgen]))
+    index_gens       = itertools.chain(index_gens_right, index_gens_left) 
+    indices_unfiltered = ((row, col - delta) for col, gen in index_gens for delta, row in gen)
+    indices = ((row, col) for (row, col) in indices_unfiltered if value_indicator[row, col])
+
+    #values =  (data[row, col] for (row, col) in indices)
+    #values = list(values)
+    values = data[zip(*indices)]
+
+    
+    #iterator = iter(values)
+    #print ["{:02X}".format(extract_int(iterator, 8)) for _ in xrange(55)]
+    #print data
+    #print "======================================================"
+    print values
+    print '______________'
+    int_list = extract_ints(values,12,48,8)
+    print len(int_list) 
+    print "".join(chr(item) for item in int_list)
+    print '______________'
+    iterator = iter(values)
+    print bin(extract_int(iterator, 12))
+    print ''.join(["{:c}".format(extract_int(iterator, 8)) for _ in xrange(48)])
+    #print chr(extract_int(iterator, 8))
+    #print ["{:02X}".format(extract_int(iterator, 8)) for _ in xrange(55)]
+    #print [bin(extract_int(iterator, 8)) for _ in xrange(10)]
 
 
 if __name__ == '__main__':
@@ -158,8 +249,9 @@ if __name__ == '__main__':
     #filename = 'IMG_2712.JPG' # wall, not flat, very high slope , little warping error    
 
     image = cv2.imread(filename,-1)
-    binary = extract_qr_bin(image, 400)
-    print binary
+    binary = extract_qr_bin(image)
+    extract_data(binary)
+    #print binary
 
     cv2.waitKey(0)
 
