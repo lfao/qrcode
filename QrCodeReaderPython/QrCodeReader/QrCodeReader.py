@@ -150,7 +150,16 @@ def extract_qr_bin(image, output_size = None):
         cv2.imwrite("output.jpg",qr)
     return numpy.logical_not(inverted_data)
 
-def extract_data(data):
+def extract_int_list(numpy_array, start_bit, word_len, word_count):
+    mydata = numpy_array[start_bit:(start_bit + word_count * word_len)].reshape(word_count, word_len)
+    weight = 2 ** numpy.arange(word_len - 1, -1 , -1)
+    return numpy.sum(weight * mydata, 1)
+
+def extract_int(numpy_array, start_bit, word_len):
+    [retval] = extract_int_list(numpy_array, start_bit, word_len, 1)
+    return retval
+
+def extract_stream(data):
     MASK_FUNCTIONS = [
         lambda row, column : (row + column) % 2 == 0 ,
         lambda row, column : (row) % 2 == 0 ,
@@ -161,52 +170,49 @@ def extract_data(data):
         lambda row, column : ( ((row * column) % 2) + ((row * column) % 3) ) % 2 == 0 ,
         lambda row, column : ( ((row + column) % 2) + ((row * column) % 3) ) % 2 == 0
         ]
-    
-    def extract_ints(numpy_array, start_bit, word_len, word_count = 1):
-        mydata = numpy_array[start_bit:(start_bit + word_count * word_len)].reshape(word_count, word_len)
-        weight = 2 ** numpy.arange(word_len - 1, -1 , -1)
-        return numpy.sum(weight * mydata, 1)
 
-    def get_dataarea_indicator(shape):
-        size, _ = shape
-        retval = numpy.ones(data.shape, dtype=bool)
+    def get_dataarea_indicator(version):
+        size = version * 4 + 17
+        retval = numpy.ones((size,size), dtype=bool)
         retval[6, :] = False
         retval[:, 6] = False
         retval[:9, :9] = False
         retval[size - 8 :, : 9] = False
-        retval[: 9, size - 8 :] = False
-
-        def indicate_alginment(row,column) :
-            retval[column - 2: column + 3, row - 2: row + 3] = False
+        retval[: 9, size - 8 :] = False            
     
         if version > 1 :
-            aligment_middle_start = 6
-            aligment_middle_end = size - 7
-            indicate_alginment(aligment_middle_end,aligment_middle_end)
+            alignment_axis_count = version / 7 + 2
+            alignment_start = 6
+            alignment_end = size - 7
+            alignment_distance = (alignment_end - alignment_start) / (alignment_axis_count - 1)
+            alignment_position_generator = ((alignment_start + row_factor * alignment_distance, alignment_start + col_factor * alignment_distance) 
+                                            for row_factor, col_factor in itertools.product(xrange(alignment_axis_count),repeat = 2))
+
+            for row, col in alignment_position_generator:
+                if retval[row, col]:
+                    retval[col - 2: col + 3, row - 2: row + 3] = False
+
+        if version >= 7:
+            retval[size - 11 : size - 8, :6] = False
+            retval[:6, size - 11 : size - 8] = False
 
         return retval
     
     size, _ = data.shape
     version = (size - 17) / 4
-    #print size, version
-    byte_len = 8
     format_info = numpy.append(data[[range(6) + [7,8],8]], data[8, [7, 5, 4, 3, 2, 1, 0]])
     format_info = numpy.logical_xor([False, True, False, False, True, False, False, False, False, False, True, False, True, False, True], format_info, format_info)
-    [mask] = extract_ints(format_info, 11, 3)   
+    mask = extract_int(format_info, 11, 3)
+    #print size, version
     #print mask 
-    #print format_info
+    #print format_info   
 
-
-    
-
-    dataarea_indicator = get_dataarea_indicator(data.shape)
+    dataarea_indicator = get_dataarea_indicator(version)
     mask_matrix = numpy.fromfunction(MASK_FUNCTIONS[mask], data.shape)
     mask_matrix = numpy.logical_and(mask_matrix, dataarea_indicator, mask_matrix)
-    
     #cv2.imshow("data raw", cv2.resize(numpy.logical_not(data).astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))    
     #cv2.imshow("mask", cv2.resize(numpy.logical_not(mask_matrix).astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))
     #cv2.imshow("ausgeblendet", cv2.resize(dataarea_indicator.astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))
-    
     data = numpy.logical_xor(data, mask_matrix, data)
     #cv2.imshow("data", cv2.resize(numpy.logical_not(data).astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))
     
@@ -218,11 +224,22 @@ def extract_data(data):
     indices_unfiltered = ((row, col - delta) for col, gen in index_gens for delta, row in gen)
     indices = ((row, col) for (row, col) in indices_unfiltered if dataarea_indicator[row, col])
     values = data[zip(*indices)]
-
     
+    version_info = None
+    return values, version, format_info, version_info
 
-    int_list = extract_ints(values,12, 8, 48)
-    print "".join(chr(item) for item in int_list)
+def extract_data(values, version, format_info, version_info):
+    mode_value = extract_int(values,0,4)
+    mode_index = int(numpy.log2(mode_value))
+    version_index = 0 if version < 10 else 1 if version < 27 else 2
+    length_code_length = [[10, 9, 8, 8],[12, 11, 16, 10],[14 ,13 ,16 ,12]][version_index][mode_index]
+    word_length = [10,11,8,8][mode_index]
+    length =  extract_int(values, 4, length_code_length)
+    data_beginn = 4 + length_code_length
+
+    int_list = extract_int_list(values, data_beginn, word_length, length)
+    
+    return int_list, mode_index
 
 
 if __name__ == '__main__':
@@ -235,7 +252,9 @@ if __name__ == '__main__':
 
     image = cv2.imread(filename,-1)
     binary = extract_qr_bin(image)
-    extract_data(binary)
+    int_list, mode_index = extract_data(*extract_stream(binary))
+    if mode_index == 2:
+        print "".join(chr(item) for item in int_list)
     #print binary
 
     cv2.waitKey(0)
