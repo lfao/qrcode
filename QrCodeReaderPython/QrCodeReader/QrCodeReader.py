@@ -18,6 +18,7 @@ def extract_qr_bin(image, output_size = None):
     TL, TR, BL, BR = range(4) 
 
     image_resized = cv2.resize(image, (800, 800))
+    #image_resized = image;
     image_gray = cv2.cvtColor(image_resized, cv2.COLOR_RGB2GRAY)
     edges = cv2.Canny(image_gray, 100, 200)
     _, contours, [hierachy] = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -110,6 +111,10 @@ def extract_qr_bin(image, output_size = None):
     t = float(numpy.cross(pattern_corner_list[BL][BL] - pattern_corner_list[TR][TR], bl_b_dif_horizontal)) / numpy.cross(tr_r_dif_vertical, bl_b_dif_horizontal)
     br_br = pattern_corner_list[TR][TR] + t * tr_r_dif_vertical
 
+    #br_br = pattern_center_list[TR] + pattern_center_list[BL] - pattern_corner_list[TL][TL]
+
+
+
     # defining the warp source quadrangle
     source = numpy.array([pattern_corner_list[TL][TL], pattern_corner_list[TR][TR], br_br, pattern_corner_list[BL][BL]], dtype = "float32")
     
@@ -186,11 +191,14 @@ def extract_stream(data):
             alignment_end = size - 7
             alignment_distance = (alignment_end - alignment_start) / (alignment_axis_count - 1)
             alignment_position_generator = ((alignment_start + row_factor * alignment_distance, alignment_start + col_factor * alignment_distance) 
-                                            for row_factor, col_factor in itertools.product(xrange(alignment_axis_count),repeat = 2))
+                                            for row_factor, col_factor in itertools.product(xrange(alignment_axis_count),repeat = 2)
+                                            if not (row_factor == col_factor == 0 or 
+                                                   (row_factor == 0 and col_factor == alignment_axis_count - 1) or 
+                                                   (row_factor == alignment_axis_count - 1 and col_factor == 0)))
 
             for row, col in alignment_position_generator:
-                if retval[row, col]:
-                    retval[col - 2: col + 3, row - 2: row + 3] = False
+                print row, col
+                retval[col - 2: col + 3, row - 2: row + 3] = False
 
         if version >= 7:
             retval[size - 11 : size - 8, :6] = False
@@ -200,21 +208,21 @@ def extract_stream(data):
     
     size, _ = data.shape
     version = (size - 17) / 4
-    format_info = numpy.append(data[[range(6) + [7,8],8]], data[8, [7, 5, 4, 3, 2, 1, 0]])
-    format_info = numpy.logical_xor([False, True, False, False, True, False, False, False, False, False, True, False, True, False, True], format_info, format_info)
-    mask = extract_int(format_info, 11, 3)
+    format_info = numpy.append(data[8,[0, 1, 2, 3, 4, 5, 7,8]], data[[7, 5, 4, 3, 2, 1, 0], 8])
+    format_info = numpy.logical_xor([True, False, True, False, True, False, False, False, False, False, True, False, False, True, False], format_info, format_info)
+    mask = extract_int(format_info, 2, 3)
     #print size, version
-    #print mask 
+    print mask 
     #print format_info   
 
     dataarea_indicator = get_dataarea_indicator(version)
     mask_matrix = numpy.fromfunction(MASK_FUNCTIONS[mask], data.shape)
     mask_matrix = numpy.logical_and(mask_matrix, dataarea_indicator, mask_matrix)
-    #cv2.imshow("data raw", cv2.resize(numpy.logical_not(data).astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))    
-    #cv2.imshow("mask", cv2.resize(numpy.logical_not(mask_matrix).astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))
-    #cv2.imshow("ausgeblendet", cv2.resize(dataarea_indicator.astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))
+    cv2.imshow("data raw", cv2.resize(numpy.logical_not(data).astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))    
+    cv2.imshow("mask", cv2.resize(numpy.logical_not(mask_matrix).astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))
+    cv2.imshow("ausgeblendet", cv2.resize(dataarea_indicator.astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))
     data = numpy.logical_xor(data, mask_matrix, data)
-    #cv2.imshow("data", cv2.resize(numpy.logical_not(data).astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))
+    cv2.imshow("data", cv2.resize(numpy.logical_not(data).astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))
     
     index_upgen   = [(i % 2, size - 1 - i / 2) for i in xrange(2 * size)]
     index_downgen = [(i % 2,            i / 2) for i in xrange(2 * size)]    
@@ -234,13 +242,39 @@ def extract_data(values, version, format_info, version_info):
     version_index = 0 if version < 10 else 1 if version < 27 else 2
     length_code_length = [[10, 9, 8, 8],[12, 11, 16, 10],[14 ,13 ,16 ,12]][version_index][mode_index]
     word_length = [10,11,8,8][mode_index]
+
+    length_code_length = 8
     length =  extract_int(values, 4, length_code_length)
     data_beginn = 4 + length_code_length
+    print length_code_length, length
+    temp_length = length / [3,2,1,1][mode_index]
+    #temp_length = length
+    int_list = extract_int_list(values, data_beginn, word_length, temp_length)
 
-    int_list = extract_int_list(values, data_beginn, word_length, length)
-    
+    #print [hex(value) for value in extract_int_list(values, 0, 8, 15)   ]
+
     return int_list, mode_index
 
+
+
+def camera_loop():
+    capture = cv2.VideoCapture(0)
+    if not capture.isOpened():
+        print "Unable to open camera"
+    
+    output = ""
+    while True:
+        retval, image = capture.read()
+        binary = extract_qr_bin(image)
+        if binary is not None:
+            int_list, mode_index = extract_data(*extract_stream(binary))
+            if mode_index == 2:
+                new_output = "".join(chr(item) for item in int_list)
+            if new_output != output:
+                print new_output
+                output = new_output
+        
+    
 
 if __name__ == '__main__':
 
@@ -249,10 +283,15 @@ if __name__ == '__main__':
     filename = 'IMG_2717.JPG' # wall
     #filename = 'IMG_2716.JPG' # keyboard , little extrapolation error
     #filename = 'IMG_2712.JPG' # wall, not flat, very high slope , little warping error    
+    #filename = "QR4.png"
+
+
 
     image = cv2.imread(filename,-1)
-    binary = extract_qr_bin(image)
+    
+    binary = extract_qr_bin(image, 400)
     int_list, mode_index = extract_data(*extract_stream(binary))
+    print mode_index
     if mode_index == 2:
         print "".join(chr(item) for item in int_list)
     #print binary
