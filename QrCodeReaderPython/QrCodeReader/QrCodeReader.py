@@ -103,20 +103,6 @@ def extract_qr_bin(image, output_size = None):
     # patternindices are TL, TR, BL
     # conrerindices  are TL, TR, BL, BR 
     pattern_corner_list = numpy.array(list(pattern_corner_generator()))
-
-    # extrapolation of the bottom right corner http://stackoverflow.com/questions/563198/how-do-you-detect-where-two-line-segments-intersect
-    # This must be very exact
-    tr_r_dif_vertical = pattern_corner_list[TR][TR] - pattern_corner_list[TR][BR]
-    bl_b_dif_horizontal = pattern_corner_list[BL][BL] - pattern_corner_list[BL][BR]   
-    t = float(numpy.cross(pattern_corner_list[BL][BL] - pattern_corner_list[TR][TR], bl_b_dif_horizontal)) / numpy.cross(tr_r_dif_vertical, bl_b_dif_horizontal)
-    br_br = pattern_corner_list[TR][TR] + t * tr_r_dif_vertical
-
-    #br_br = pattern_center_list[TR] + pattern_center_list[BL] - pattern_corner_list[TL][TL]
-
-
-
-    # defining the warp source quadrangle
-    source = numpy.array([pattern_corner_list[TL][TL], pattern_corner_list[TR][TR], br_br, pattern_corner_list[BL][BL]], dtype = "float32")
     
     # calculating the number of pixels in the clean qr code. This must be very exact
     pattern_average = numpy.mean([numpy.linalg.norm(pattern_corner_list[i][j]-pattern_corner_list[i][k]) for i in xrange(3) for j, k in [(TL,TR),(BL,BR),(TL,BL),(TR,BR)]])
@@ -127,18 +113,59 @@ def extract_qr_bin(image, output_size = None):
     
     pixelestimated = size_average / pattern_average * 7 # the width and the heigth of Finder Pattern is 7. Use the rule of three
     pixelcount = int(round((pixelestimated - 17) / 4)) * 4 + 17 # only pixelcounts of 4 * Version + 17 are allowed => round to this number
+    pixel_lenght = size_average / pixelcount
 
+    
+    # extrapolation of the bottom right corner http://stackoverflow.com/questions/563198/how-do-you-detect-where-two-line-segments-intersect
+    # This must be very exact
+    tr_r_dif_vertical = pattern_corner_list[TR][TR] - pattern_corner_list[TR][BR]
+    bl_b_dif_horizontal = pattern_corner_list[BL][BL] - pattern_corner_list[BL][BR]   
+    t = float(numpy.cross(pattern_corner_list[BL][BL] - pattern_corner_list[TR][TR], bl_b_dif_horizontal)) / numpy.cross(tr_r_dif_vertical, bl_b_dif_horizontal)
+    br_br = pattern_corner_list[TR][TR] + t * tr_r_dif_vertical     
+    
+    if (pixelcount - 17) / 4 > 1:
+        aligment_area_delta = (pixel_lenght) * 6
+        aligment_center = (pattern_center_list[TR] + pattern_center_list[BL] - pattern_corner_list[TL][BR]) + (pixel_lenght / 2)
+        slice_coordinates = (numpy.transpose([aligment_center]) + [-aligment_area_delta, aligment_area_delta]).astype(int)
+        area = (slice(*slice_coordinates[1]),
+                slice(*slice_coordinates[0]))
+
+        alignment_edges = edges[area]
+        cv2.imshow("algimentedges", alignment_edges)
+        _, alignment_contours, [alignment_hierachy] = cv2.findContours(alignment_edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        
+        def alignment_get_dept(index):
+            '''
+            Looks for the amount of childs in alignment_hierachy for a certain index
+            Keyword arguments:
+            index -- The index in hierachy to check
+            Returns:
+            The amount of childs of the selected index
+            '''
+            # the child is stored in hierachy at inner index = 2, it is negative if it has no child
+            return alignment_get_dept(alignment_hierachy[index][2]) + 1 if alignment_hierachy[index][2] >= 0 else 0 
+
+        alignment_index = [i for i in xrange(len(alignment_hierachy)) if alignment_get_dept(i) == 3]
+        if 1 == len(alignment_index):
+            alignment_moments = cv2.moments(alignment_contours[alignment_index[0]])
+            alignment_center = slice_coordinates[:,0] + [alignment_moments['m10']/alignment_moments['m00'], alignment_moments['m01']/alignment_moments['m00']]
+            br_br = pattern_center_list[TL] + (alignment_center - pattern_center_list[TL]) * ((pixelcount - 3.5) / (pixelcount - 10))
+
+    # defining the warp source quadrangle
+    source = numpy.array([pattern_corner_list[TL][TL], pattern_corner_list[TR][TR], br_br, pattern_corner_list[BL][BL]], dtype = "float32")
     # defining the warp destination square which is 8*8 times the number of pixels in the clean qr code
-    temp_warp_size = pixelcount * 8
-    destination = numpy.array([(0, 0), (temp_warp_size, 0), (temp_warp_size, temp_warp_size), (0, temp_warp_size)], dtype = "float32")
+    temp_pixel_size = 8
+    temp_warp_size = pixelcount * temp_pixel_size
+    boarder = temp_pixel_size * 0
+    destination = numpy.array([(boarder, boarder), (temp_warp_size + boarder, boarder), (temp_warp_size + boarder, temp_warp_size + boarder), (0 + boarder, temp_warp_size + boarder)], dtype = "float32")
     
     # doing the warping and thresholding
     warp_matrix = cv2.getPerspectiveTransform(source, destination);
-    bigqr_nottresholded = cv2.warpPerspective(image_gray, warp_matrix, (temp_warp_size, temp_warp_size));	
-    _ ,bigqr = cv2.threshold(bigqr_nottresholded, 127, 255, cv2.THRESH_BINARY);
-    
+    bigqr_nottresholded = cv2.warpPerspective(image_gray, warp_matrix, (temp_warp_size + 2 * boarder, temp_warp_size + 2 * boarder));	
+    _ ,bigqr = cv2.threshold(bigqr_nottresholded, 127, 255, cv2.THRESH_BINARY);   
+
     # resizing to the real amount of pixels and thresholding again
-    qr_notresholded = cv2.resize(bigqr, (pixelcount, pixelcount))
+    qr_notresholded = cv2.resize(bigqr[boarder : temp_warp_size + boarder, boarder : temp_warp_size + boarder], (pixelcount, pixelcount))
     a ,qr = cv2.threshold(qr_notresholded, 127, 255, cv2.THRESH_BINARY);
     
     # extracting the data
@@ -280,10 +307,10 @@ if __name__ == '__main__':
 
     #filename = '45degree.jpg' # easy
     #filename = 'IMG_2713.jpg' # chair
-    filename = 'IMG_2717.JPG' # wall
-    #filename = 'IMG_2716.JPG' # keyboard , little extrapolation error
+    #filename = 'IMG_2717.JPG' # wall
+    filename = 'IMG_2716.JPG' # keyboard , little extrapolation error
     #filename = 'IMG_2712.JPG' # wall, not flat, very high slope , little warping error    
-    #filename = "QR4.png"
+    filename = "QR5.png"
 
 
 
