@@ -5,7 +5,7 @@ import operator
 import functools
 
 from extract_qr_matrix_from_image import extract_qr_matrix_from_image
-from extract_qr_data_from_matrix import extract_stream, extract_data, error_correction_and_reorder
+from extract_qr_data_from_matrix import extract_bit_array, extract_string, error_correction, get_version_size, get_format_info_data
 
 def camera_loop():
     capture = cv2.VideoCapture(0)
@@ -17,7 +17,7 @@ def camera_loop():
         retval, image = capture.read()
         binary = extract_qr_matrix(image)
         if binary is not None:
-            int_list, mode_index = extract_data(*extract_stream(binary))
+            int_list, mode_index = extract_string(*extract_stream(binary))
             if mode_index == 2:
                 new_output = "".join(chr(item) for item in int_list)
             if new_output != output:
@@ -35,16 +35,20 @@ if __name__ == '__main__':
     #filename = 'IMG_2712.JPG' # wall, not flat, very high slope , little warping error    
     filename = "QR5.png"
     #filename = "chart.png"
-    filename = "alphanumeric.png"
+    #filename = "alphanumeric.png"
     #filename = "IMG_2728.JPG"
 
 
     image = cv2.imread(filename,-1)
     
-    binary = extract_qr_matrix_from_image(image, 400)
-    #extract_stream(binary)
-    string = extract_data(*error_correction_and_reorder(*extract_stream(binary)))
-    #print mode_index
+    bit_matrix = extract_qr_matrix_from_image(image, 400)
+
+    mask_index, ecc_level = get_format_info_data(bit_matrix)
+    version, size = get_version_size(bit_matrix)
+
+    bit_array_raw = extract_bit_array(bit_matrix, mask_index)
+    bit_array = error_correction(bit_array_raw, version, ecc_level)
+    string = extract_string(bit_array, version)
 
     print string
 

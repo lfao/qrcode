@@ -122,16 +122,25 @@ def extract_qr_matrix_from_image(image, output_size = None):
     t = float(numpy.cross(pattern_corner_list[BL][BL] - pattern_corner_list[TR][TR], bl_b_dif_horizontal)) / numpy.cross(tr_r_dif_vertical, bl_b_dif_horizontal)
     br_br = pattern_corner_list[TR][TR] + t * tr_r_dif_vertical     
     
-    if (pixelcount - 17) / 4 > 1:
-        aligment_area_delta = (pixel_lenght) * 6
-        aligment_center = (pattern_center_list[TR] + pattern_center_list[BL] - pattern_corner_list[TL][BR]) + (pixel_lenght / 2)
-        slice_coordinates = (numpy.transpose([aligment_center]) + [-aligment_area_delta, aligment_area_delta]).astype(int)
-        area = (slice(*slice_coordinates[1]),
-                slice(*slice_coordinates[0]))
+    if (pixelcount - 17) / 4 > 1: # check if the QR code has a version greater 1. Then it has a alignment pattern at the bottom right corner too. Use this for a better extrapolation
+        # trying to find this alignment pattern and improve the value.
 
-        alignment_edges = edges[area]
-        #cv2.imshow("algimentedges", alignment_edges)
-        _, alignment_contours, [alignment_hierachy] = cv2.findContours(alignment_edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        alignment_area_delta = (pixel_lenght) * 6 # The width and height of the area for searching the contour of the finderpattern will be 2 * aligment_area_delta
+
+        # calculating the middle of the QR code with the centers of the pattern TR and BL 
+        # calculating the vector from pattern_corner_list[TL][BR] to the middle of the QR code
+        # adding this vector two times to pattern_corner_list[TL][BR] to reach the pattern_corner_list[BR][TL] (which values do not exist yet)
+        # adding the offset of an half pixel to both coordinates (numpy style adding a value to each element of an array)
+        estimated_alignment_center = (pattern_center_list[TR] + pattern_center_list[BL] - pattern_corner_list[TL][BR]) + (pixel_lenght / 2)
+
+        # getting the start and the end of the slice for each coordinate of the alignment center
+        # (numpy style adding a 2 element column vector to a 2 elment row vector will create a matrix with 4 elements) 
+        slice_coordinates = (numpy.transpose([estimated_alignment_center]) + [-alignment_area_delta, alignment_area_delta]).astype(int) 
+        
+        area = (slice(*slice_coordinates[1]), slice(*slice_coordinates[0])) # get slice obejects for the search area
+
+        # finding contours in the selected area
+        _, alignment_contours, [alignment_hierachy] = cv2.findContours(edges[area], cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         
         def alignment_get_dept(index):
             '''
@@ -144,10 +153,18 @@ def extract_qr_matrix_from_image(image, output_size = None):
             # the child is stored in hierachy at inner index = 2, it is negative if it has no child
             return alignment_get_dept(alignment_hierachy[index][2]) + 1 if alignment_hierachy[index][2] >= 0 else 0 
 
+        # find a 3 times nested contour which is the alignment pattern
         alignment_index = [i for i in xrange(len(alignment_hierachy)) if alignment_get_dept(i) == 3]
-        if 1 == len(alignment_index):
+
+        if 1 == len(alignment_index): # check whether exact one pattern has been found
+            # make a better extrapolation of the bottom right corner
+
+            # calculate the center of the alignment pattern
             alignment_moments = cv2.moments(alignment_contours[alignment_index[0]])
             alignment_center = slice_coordinates[:,0] + [alignment_moments['m10']/alignment_moments['m00'], alignment_moments['m01']/alignment_moments['m00']]
+            
+            # extrapolate the bottom right corner by scaling the vector from the center of the top left finder pattern and the center of the bottom right alignment pattern
+            # therefore use the rule of three
             br_br = pattern_center_list[TL] + (alignment_center - pattern_center_list[TL]) * ((pixelcount - 3.5) / (pixelcount - 10))
 
     # defining the warp source quadrangle
