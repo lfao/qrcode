@@ -104,11 +104,11 @@ def extract_qr_matrix_from_image(image, output_size = None):
     pattern_corner_list = numpy.array(list(pattern_corner_generator()))
     
     # calculating the number of pixels in the clean qr code. This must be very exact
-    pattern_average = numpy.mean([numpy.linalg.norm(pattern_corner_list[i][j]-pattern_corner_list[i][k]) for i in xrange(3) for j, k in [(TL,TR),(BL,BR),(TL,BL),(TR,BR)]])
-    size_average    = numpy.mean([numpy.linalg.norm(pattern_corner_list[TL][TL]-pattern_corner_list[TR][TR]),  
-                                  numpy.linalg.norm(pattern_corner_list[TL][BL]-pattern_corner_list[TR][BR]), 
-                                  numpy.linalg.norm(pattern_corner_list[TL][TL]-pattern_corner_list[BL][BL]), 
-                                  numpy.linalg.norm(pattern_corner_list[TL][TR]-pattern_corner_list[BL][BR])])
+    pattern_average = numpy.mean([numpy.linalg.norm(pattern_corner_list[i] [j]  - pattern_corner_list[i] [k] ) for i in xrange(3) for j, k in [(TL,TR),(BL,BR),(TL,BL),(TR,BR)]])
+    size_average    = numpy.mean([numpy.linalg.norm(pattern_corner_list[TL][TL] - pattern_corner_list[TR][TR]),  
+                                  numpy.linalg.norm(pattern_corner_list[TL][BL] - pattern_corner_list[TR][BR]), 
+                                  numpy.linalg.norm(pattern_corner_list[TL][TL] - pattern_corner_list[BL][BL]), 
+                                  numpy.linalg.norm(pattern_corner_list[TL][TR] - pattern_corner_list[BL][BR])])
     
     pixelestimated = size_average / pattern_average * 7 # the width and the heigth of Finder Pattern is 7. Use the rule of three
     pixelcount = int(round((pixelestimated - 17) / 4)) * 4 + 17 # only pixelcounts of 4 * Version + 17 are allowed => round to this number

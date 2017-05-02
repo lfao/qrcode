@@ -30,10 +30,10 @@ if __name__ == '__main__':
 
     #filename = '45degree.jpg' # easy
     #filename = 'IMG_2713.jpg' # chair
-    filename = 'IMG_2717.JPG' # wall
+    #filename = 'IMG_2717.JPG' # wall
     #filename = 'IMG_2716.JPG' # keyboard , little extrapolation error
     #filename = 'IMG_2712.JPG' # wall, not flat, very high slope , little warping error    
-    #filename = "QR5.png"
+    filename = "QR5.png"
     #filename = "chart.png"
     #filename = "alphanumeric.png"
 
@@ -43,7 +43,7 @@ if __name__ == '__main__':
     binary = extract_qr_matrix_from_image(image)#, 400)
     #extract_stream(binary)
     int_list, mode_index = extract_data(*error_correction_and_reorder(*extract_stream(binary)))
-    print mode_index
+    #print mode_index
     if mode_index == 2:
         print "".join(chr(item) for item in int_list)
     #print binary

@@ -1,7 +1,5 @@
 import numpy
 import itertools
-import operator
-import functools
 import reedsolo
 
 def extract_int_list(numpy_array, start_bit, word_len, word_count):
@@ -14,7 +12,7 @@ def extract_int(numpy_array, start_bit, word_len):
     return retval
 
 def extract_long(array):
-    return sum(2L << i if value else 0 for i, value in enumerate(array[::-1]))
+    return sum(1L << i if value else 0 for i, value in enumerate(array[::-1]))
 
 def get_dataarea_indicator(version):
     size = version * 4 + 17
@@ -90,7 +88,7 @@ def extract_stream(data):
     indices = ((row, col) for (row, col) in indices_unfiltered if dataarea_indicator[row, col])
     values = data[zip(*indices)]
    
-    version_info = None
+    version_info = numpy.transpose(data[size - 9 : size - 12: -1, 5::-1]).flatten() if version >= 7 else None
     return values, version, format_info, version_info
 
 def error_correction_and_reorder(values, version, format_info, version_info):
@@ -98,8 +96,6 @@ def error_correction_and_reorder(values, version, format_info, version_info):
     BLOCK_COUNT = [[1 ,1 ,1 ,1] ,[1 ,1 ,1 ,1] ,[1 ,1 ,2 ,2] ,[1 ,2 ,2 ,4] ,[1 ,2 ,4 ,4] ,[2 ,4 ,4 ,4] ,[2 ,4 ,6 ,5] ,[2 ,4 ,6 ,6] ,[2 ,5 ,8 ,8] ,[4 ,5 ,8 ,8] ,[4 ,5 ,8 ,11] ,[4 ,8 ,10 ,11] ,[4 ,9 ,12 ,16] ,[4 ,9 ,16 ,16] ,[6 ,10 ,12 ,18] ,[6 ,10 ,17 ,16] ,[6 ,11 ,16 ,19] ,[6 ,13 ,18 ,21] ,[7 ,14 ,21 ,25] ,[8 ,16 ,20 ,25] ,[8 ,17 ,23 ,25] ,[9 ,17 ,23 ,34] ,[9 ,18 ,25 ,30] ,[10 ,20 ,27 ,32] ,[12 ,21 ,29 ,35] ,[12 ,23 ,34 ,37] ,[12 ,25 ,34 ,40] ,[13 ,26 ,35 ,42] ,[14 ,28 ,38 ,45] ,[15 ,29 ,40 ,48] ,[16 ,31 ,43 ,51] ,[17 ,33 ,45 ,54] ,[18 ,35 ,48 ,57] ,[19 ,37 ,51 ,60] ,[19 ,38 ,53 ,63] ,[20 ,40 ,56 ,66] ,[21 ,43 ,59 ,70] ,[22 ,45 ,62 ,74] ,[24 ,47 ,65 ,77] ,[25 ,49 ,68 ,81]]
 
     edc_level = [1 ,0 ,3 ,2][extract_int(format_info, 0, 2)]
-
-    print edc_level, version, "edc level, version"
 
     block_count    = BLOCK_COUNT   [version - 1][edc_level]
     codeword_count = CODEWORD_COUNT[version - 1][edc_level]
@@ -110,65 +106,20 @@ def error_correction_and_reorder(values, version, format_info, version_info):
     long_block_count = codeword_count % block_count
     errorcorrection_block_length = (bytes_count - codeword_count) / block_count
 
-    #print block_count, codeword_count, bytes_count, "block_count, codeword_count, bytes_count"
-    #print short_block_length, long_block_count, errorcorrection_block_length, "short_block_length, long_block_count, errorcorrection_block_length"
-
-    #if block_count > 1:
     short_block_indices = (range(block, short_block_length * block_count, block_count) for block in xrange(block_count - long_block_count))
-    long_block_indices =  (range(block, short_block_length * block_count, block_count) + [shortblock_length * block_count + block] 
+    long_block_indices  = (range(block, short_block_length * block_count, block_count) + [shortblock_length * block_count + block] 
                             for block in xrange(block_count - long_block_count, long_block_count))
-    datablock_indices =   (itertools.chain(short_block_indices,long_block_indices))
-    #else:
-    #    datablock_indices = [range(codeword_count)]
+    datablock_indices = itertools.chain(short_block_indices,long_block_indices)
         
     correction_indices = (range(block + codeword_count, bytes_count, block_count) for block in xrange(block_count))
 
-    #print datablock_indices
-    #correction_indices = list(correction_indices)
-    #print correction_indices
-
-        
-
-    packed = numpy.packbits(values) #reedsolo.rs_encode_msg
-    #data = list((packed[block + correction_data], errorcorrection_block_length) for block, correction_data in itertools.izip(datablock_indices, correction_indices))
-
-    corrected_bytes = list(reedsolo.rs_correct_msg(packed[block + correction_data], errorcorrection_block_length) for block, correction_data in itertools.izip(datablock_indices, correction_indices))
-    #corrected_bytes = list(packed[block] for block in datablock_indices)
-
-    #for corrected, extracted in itertools.izip(corrected_bytes, extracted_bytes) :
-    #    print len(corrected), len(extracted)
-    #    print corrected #numpy.array(corrected, numpy.int)
-    #    print extracted
-
-
-    #print corrected_bytes
-    #print extracted_bytes   
-        
-    #extracted_byte_chain = numpy.fromiter(itertools.chain.from_iterable(extracted_bytes), dtype=numpy.uint8)
+    packed = numpy.packbits(values)
+    corrected_bytes = (reedsolo.rs_correct_msg(packed[block + correction_data], errorcorrection_block_length)
+                       for block, correction_data in itertools.izip(datablock_indices, correction_indices))
     corrected_byte_chain = numpy.fromiter(itertools.chain.from_iterable(corrected_bytes), dtype=numpy.uint8)    
-
-    #print corrected_byte_chain.size
-    #print extracted_byte_chain.size
-
-    #for element in extractet_byte_chain :
-    #    print element        
-
-    #data = itertools.chain.from_iterable(apply_error_correction(packed[block],packed[correction_data]) for block, correction_data in itertools.izip(datablock_indices, correction_indices))
-    
     corrected_bits = numpy.unpackbits(corrected_byte_chain)
-    #print values.shape, values2.shape
-    
-
-    #print 
-    #reordernum = 2   
-    #if reordernum > 1:
-    #    splitted = numpy.array_split(numpy.arange(0,values.size), numpy.arange(8,values.size, 8))
-    #    reorderindices = list(itertools.chain.from_iterable(itertools.chain.from_iterable(splitted[i::reordernum] for i in xrange(reordernum))))
-    #    print reorderindices
-    #    values = values[reorderindices]
 
     return corrected_bits, version, format_info, version_info
-
 
 def extract_data(values, version, format_info, version_info):
     mode_value = extract_int(values,0,4)
@@ -180,22 +131,10 @@ def extract_data(values, version, format_info, version_info):
     length_code_length = 8
     length =  extract_int(values, 4, length_code_length)
     data_beginn = 4 + length_code_length
-    print mode_index ,  "modeindex"
-    print length_code_length, length
+    #print mode_index ,  "modeindex"
+    #print length_code_length, length
     temp_length = length / [3,2,1,1][mode_index]
-    #temp_length = length
     int_list = extract_int_list(values, data_beginn, word_length, temp_length)
-    
-    #temp_int_list = extract_int_list(values, 0, 8, 194)
-
-    #print ' '.join("{:02x}".format(value) for value in temp_int_list)
-    #print  ' '.join("{:02x}".format(value) for value in numpy.packbits(values)) , "pack"
-    #print '""""""""""""""""""""""""""""""""""""""'
-    
-    #temp_int_list2 = numpy.append(temp_int_list[::2],temp_int_list[1::2])
-    #print values[:40]
-    #print ' '.join("{:02x}".format(value) for value in temp_int_list2)
 
     return int_list, mode_index
-    #return temp_int_list2, mode_index
 
