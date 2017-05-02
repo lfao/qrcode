@@ -35,18 +35,18 @@ if __name__ == '__main__':
     #filename = 'IMG_2712.JPG' # wall, not flat, very high slope , little warping error    
     filename = "QR5.png"
     #filename = "chart.png"
-    #filename = "alphanumeric.png"
+    filename = "alphanumeric.png"
+    #filename = "IMG_2728.JPG"
 
 
     image = cv2.imread(filename,-1)
     
-    binary = extract_qr_matrix_from_image(image)#, 400)
+    binary = extract_qr_matrix_from_image(image, 400)
     #extract_stream(binary)
-    int_list, mode_index = extract_data(*error_correction_and_reorder(*extract_stream(binary)))
+    string = extract_data(*error_correction_and_reorder(*extract_stream(binary)))
     #print mode_index
-    if mode_index == 2:
-        print "".join(chr(item) for item in int_list)
-    #print binary
+
+    print string
 
     cv2.waitKey(0)
 

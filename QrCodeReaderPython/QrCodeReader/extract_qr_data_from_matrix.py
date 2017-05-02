@@ -107,19 +107,21 @@ def error_correction_and_reorder(values, version, format_info, version_info):
     errorcorrection_block_length = (bytes_count - codeword_count) / block_count
 
     short_block_indices = (range(block, short_block_length * block_count, block_count) for block in xrange(block_count - long_block_count))
-    long_block_indices  = (range(block, short_block_length * block_count, block_count) + [shortblock_length * block_count + block] 
-                            for block in xrange(block_count - long_block_count, long_block_count))
+    long_block_indices  = (range(block, short_block_length * block_count, block_count) + [short_block_length * block_count + block] 
+                            for block in xrange(block_count - long_block_count, block_count))
     datablock_indices = itertools.chain(short_block_indices,long_block_indices)
         
     correction_indices = (range(block + codeword_count, bytes_count, block_count) for block in xrange(block_count))
 
     packed = numpy.packbits(values)
-    corrected_bytes = (reedsolo.rs_correct_msg(packed[block + correction_data], errorcorrection_block_length)
+    corrected_byte_list_gen = (reedsolo.rs_correct_msg(packed[block + correction_data], errorcorrection_block_length)
                        for block, correction_data in itertools.izip(datablock_indices, correction_indices))
-    corrected_byte_chain = numpy.fromiter(itertools.chain.from_iterable(corrected_bytes), dtype=numpy.uint8)    
-    corrected_bits = numpy.unpackbits(corrected_byte_chain)
+    corrected_byte_array = numpy.fromiter(itertools.chain.from_iterable(corrected_byte_list_gen), dtype=numpy.uint8)
+    #print corrected_byte_array.dtype
+    #print " ".join("{:02x}".format(byte) for byte in corrected_byte_array)
+    corrected_bits_array = numpy.unpackbits(corrected_byte_array)
 
-    return corrected_bits, version, format_info, version_info
+    return corrected_bits_array, version, format_info, version_info
 
 def extract_data(values, version, format_info, version_info):
     mode_value = extract_int(values,0,4)
@@ -127,14 +129,36 @@ def extract_data(values, version, format_info, version_info):
     version_index = 0 if version < 10 else 1 if version < 27 else 2
     length_code_length = [[10, 9, 8, 8],[12, 11, 16, 10],[14 ,13 ,16 ,12]][version_index][mode_index]
     word_length = [10,11,8,8][mode_index]
-
-    length_code_length = 8
-    length =  extract_int(values, 4, length_code_length)
+    char_count =  extract_int(values, 4, length_code_length)
     data_beginn = 4 + length_code_length
     #print mode_index ,  "modeindex"
     #print length_code_length, length
-    temp_length = length / [3,2,1,1][mode_index]
-    int_list = extract_int_list(values, data_beginn, word_length, temp_length)
+    word_count = char_count / [3,2,1,1][mode_index]
+    chars_leftover = char_count % word_count
+    #print char_count, word_count
+    #print word_length, word_count , "wordlength,temp_length"
+    int_list = extract_int_list(values, data_beginn, word_length, word_count)
 
-    return int_list, mode_index
+    leftover_start = data_beginn + word_length * word_count
+
+
+    if mode_index == 0:
+        string =  "".join("{:03d}".format(item) for item in int_list)
+        leftover = extract_int(values, leftover_start, chars_leftover * 4)
+        leftover_end = leftover_start + chars_leftover * 4
+        string += "{0:0{1}d}".format(leftover, chars_leftover)
+    elif mode_index == 1:
+        lookup = [str(i) for i in range(10)] + [chr(65) for i in range(26)] + ' $%*+-./:'
+
+        string =  "".join(lookup[item / 45] + lookup[item % 45] for item in int_list)
+        if chars_leftover:
+            string += lookup[extract_int(values, leftover_start, 6)]
+        leftover_end = leftover_start + chars_leftover * 6
+    elif mode_index == 2:
+        string =  "".join(chr(item) for item in int_list)
+        leftover_end = leftover_start
+
+    #print len(string)
+
+    return string
 
