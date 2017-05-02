@@ -3,7 +3,7 @@ import cv2
 import itertools
 import operator
 
-def extract_qr_matrix_from_image(image, output_size = None):
+def extract_matrix(image, output_size = None):
     '''
     Extract a matrix of boolean values for a QR Code.
     Every boolean is associated to one point of the QR code.
@@ -130,8 +130,8 @@ def extract_qr_matrix_from_image(image, output_size = None):
         # calculating the middle of the QR code with the centers of the pattern TR and BL 
         # calculating the vector from pattern_corner_list[TL][BR] to the middle of the QR code
         # adding this vector two times to pattern_corner_list[TL][BR] to reach the pattern_corner_list[BR][TL] (which values do not exist yet)
-        # adding the offset of an half pixel to both coordinates (numpy style adding a value to each element of an array)
-        estimated_alignment_center = (pattern_center_list[TR] + pattern_center_list[BL] - pattern_corner_list[TL][BR]) + (pixel_lenght / 2)
+        # this coordinates are a half pixel away from the center. the area of searching this center should be big enought to handle this offset
+        estimated_alignment_center = (pattern_center_list[TR] + pattern_center_list[BL] - pattern_corner_list[TL][BR])
 
         # getting the start and the end of the slice for each coordinate of the alignment center
         # (numpy style adding a 2 element column vector to a 2 elment row vector will create a matrix with 4 elements) 
@@ -191,6 +191,9 @@ def extract_qr_matrix_from_image(image, output_size = None):
         cv2.imshow("resized",cv2.resize(image_resized, (output_size,output_size)))
         cv2.imshow("gray",cv2.resize(image_gray , (output_size,output_size)))
         cv2.imshow("canny", cv2.resize(edges, (output_size,output_size)))
+        if (pixelcount - 17) / 4 > 1: 
+            cv2.imshow("alignment pattern", edges[area]) 
+
         cv2.imshow("bigqr_nottresholded", bigqr_nottresholded)
         cv2.imshow("bigqr", bigqr)
         cv2.imshow("qr small", qr, )

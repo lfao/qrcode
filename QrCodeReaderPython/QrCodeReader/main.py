@@ -4,8 +4,8 @@ import itertools
 import operator
 import functools
 
-from extract_qr_matrix_from_image import extract_qr_matrix_from_image
-from extract_qr_data_from_matrix import extract_bit_array, extract_string, error_correction, get_version_size, get_format_info_data
+from qr_detector import extract_matrix
+from qr_decoder import extract_bit_array, extract_string, error_correction, get_version_size, get_format_info_data
 
 def camera_loop():
     capture = cv2.VideoCapture(0)
@@ -15,7 +15,7 @@ def camera_loop():
     output = ""
     while True:
         retval, image = capture.read()
-        binary = extract_qr_matrix(image)
+        binary = extract_matrix(image)
         if binary is not None:
             int_list, mode_index = extract_string(*extract_stream(binary))
             if mode_index == 2:
@@ -29,11 +29,11 @@ def camera_loop():
 if __name__ == '__main__':
 
     #filename = '45degree.jpg' # easy
-    #filename = 'IMG_2713.jpg' # chair
+    filename = 'IMG_2713.jpg' # chair
     #filename = 'IMG_2717.JPG' # wall
     #filename = 'IMG_2716.JPG' # keyboard , little extrapolation error
     #filename = 'IMG_2712.JPG' # wall, not flat, very high slope , little warping error    
-    filename = "QR5.png"
+    #filename = "QR5_gedreht.png"
     #filename = "chart.png"
     #filename = "alphanumeric.png"
     #filename = "IMG_2728.JPG"
@@ -41,7 +41,7 @@ if __name__ == '__main__':
 
     image = cv2.imread(filename,-1)
     
-    bit_matrix = extract_qr_matrix_from_image(image, 400)
+    bit_matrix = extract_matrix(image, 400)
 
     mask_index, ecc_level = get_format_info_data(bit_matrix)
     version, size = get_version_size(bit_matrix)
