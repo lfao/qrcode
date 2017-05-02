@@ -5,7 +5,7 @@ import operator
 import functools
 
 from extract_qr_matrix_from_image import extract_qr_matrix_from_image
-from extract_qr_data_from_matrix import extract_stream, extract_data
+from extract_qr_data_from_matrix import extract_stream, extract_data, error_correction_and_reorder
 
 def camera_loop():
     capture = cv2.VideoCapture(0)
@@ -30,8 +30,8 @@ if __name__ == '__main__':
 
     #filename = '45degree.jpg' # easy
     #filename = 'IMG_2713.jpg' # chair
-    #filename = 'IMG_2717.JPG' # wall
-    filename = 'IMG_2716.JPG' # keyboard , little extrapolation error
+    filename = 'IMG_2717.JPG' # wall
+    #filename = 'IMG_2716.JPG' # keyboard , little extrapolation error
     #filename = 'IMG_2712.JPG' # wall, not flat, very high slope , little warping error    
     #filename = "QR5.png"
     #filename = "chart.png"
@@ -40,13 +40,13 @@ if __name__ == '__main__':
 
     image = cv2.imread(filename,-1)
     
-    binary = extract_qr_matrix_from_image(image, 400)
+    binary = extract_qr_matrix_from_image(image)#, 400)
     #extract_stream(binary)
-    int_list, mode_index = extract_data(*extract_stream(binary))
+    int_list, mode_index = extract_data(*error_correction_and_reorder(*extract_stream(binary)))
     print mode_index
     if mode_index == 2:
         print "".join(chr(item) for item in int_list)
-    print binary
+    #print binary
 
     cv2.waitKey(0)
 

@@ -130,7 +130,7 @@ def extract_qr_matrix_from_image(image, output_size = None):
                 slice(*slice_coordinates[0]))
 
         alignment_edges = edges[area]
-        cv2.imshow("algimentedges", alignment_edges)
+        #cv2.imshow("algimentedges", alignment_edges)
         _, alignment_contours, [alignment_hierachy] = cv2.findContours(alignment_edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         
         def alignment_get_dept(index):
