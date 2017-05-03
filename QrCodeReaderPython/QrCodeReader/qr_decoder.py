@@ -133,7 +133,7 @@ def get_format_info_data(bit_matrix):
     return mask, ecc_level
 
 
-def extract_bit_array(bit_matrix, mask_index):
+def extract_bit_array(bit_matrix, mask_index, output = False):
     '''
     Extracts the data block of a data matrix
     Keyword arguments:
@@ -162,7 +162,7 @@ def extract_bit_array(bit_matrix, mask_index):
     mask_matrix = numpy.logical_and(mask_matrix, dataarea_indicator, mask_matrix)  # remove the parts which contain no data
     bit_matrix = numpy.logical_xor(bit_matrix, mask_matrix, bit_matrix) # invert the pixels of the orignal image, which are indicated by the mask
     
-    if False:
+    if output:
         import cv2
         cv2.imshow("mask", cv2.resize(numpy.logical_not(mask_matrix).astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))
         cv2.imshow("ausgeblendet", cv2.resize(dataarea_indicator.astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))
