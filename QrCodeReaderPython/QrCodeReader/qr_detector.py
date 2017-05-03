@@ -39,6 +39,13 @@ def extract_matrix(image, output_size = None):
 
     if len(marks) != 3: # check if 3 and only 3 finder pattern have been found
         print("Detected {} Finder Pattern. Exact 3 are required!".format(len(marks)))
+        if output_size is not None:
+            img = cv2.cvtColor(edges,cv2.COLOR_GRAY2RGB)
+            selected_contours = [contours[i] for i in marks]
+            cv2.drawContours(img, selected_contours, -1, (0,255,0), 1)
+            cv2.imshow("resized",cv2.resize(image_resized, (output_size,output_size)))
+            cv2.imshow("gray",cv2.resize(image_gray , (output_size,output_size)))
+            cv2.imshow("pattern", img)
         return None
 
    # checking if size is enough for getting good values
