@@ -12,10 +12,10 @@ if __name__ == '__main__':
     filepath_list_unfiltered = (os.path.join(mypath, f) for f in os.listdir(mypath))
     filepath_list = [f for f in filepath_list_unfiltered if os.path.isfile(f)]
     for i, filename in enumerate(filepath_list, 1):
-        print filename
+        print(filename)
         image = cv2.imread(filename,-1)
         if image is False:
-            print "could not open picture"
+            print("could not open picture")
         else:
             bit_matrix = extract_matrix(image, 400)
             if bit_matrix is not None:
@@ -32,14 +32,14 @@ if __name__ == '__main__':
                     bit_array = error_correction(raw_bit_array, version, ecc_level)
                     string = extract_string(bit_array, version)
                     success_counter += 1
-                    print "{} Picture of {} succeeded. Successrate: {}%".format(success_counter, i, round(float(success_counter)/i*100, 2))
-                    print string
+                    print("{} Picture of {} succeeded. Successrate: {}%".format(success_counter, i, round(float(success_counter)/i*100, 2)))
+                    print(string)
                     
                 except Exception as e:
-                    print e
-                    print "{} Picture of {} failed. Successrate: {}%".format(i - success_counter, i, round(float(success_counter)/i*100, 2))
+                    print(e)
+                    print("{} Picture of {} failed. Successrate: {}%".format(i - success_counter, i, round(float(success_counter)/i*100, 2)))
             else:
-                print "{} Picture of {} failed. Successrate: {}%".format(i - success_counter, i, round(float(success_counter)/i*100, 2))
+                print("{} Picture of {} failed. Successrate: {}%".format(i - success_counter, i, round(float(success_counter)/i*100, 2)))
         cv2.waitKey(0) # you have to click into a picture and press a button for viewing the next picture
         cv2.destroyAllWindows()
 

@@ -1,3 +1,6 @@
+from __future__ import division
+from builtins import zip, chr, str, range
+
 import numpy
 import itertools
 import reedsolo
@@ -39,7 +42,7 @@ def extract_long(array):
     Returns:
     A long integer
     '''
-    return sum(1L << i for i, value in enumerate(array[::-1]) if value)
+    return sum(1 << i for i, value in enumerate(array[::-1]) if value)
 
 def get_dataarea_indicator(version):
     '''
@@ -63,22 +66,22 @@ def get_dataarea_indicator(version):
     retval[: 9, size - 8 :] = False            
     
     if version > 1 : # remove alingnment pattern for every version containing these pattern
-        alignment_gaps_count = version / 7 + 1
+        alignment_gaps_count = version // 7 + 1
         alignment_start = 6
         alignment_end = size - 7
-        alignment_distance = int((float(alignment_end - alignment_start) / alignment_gaps_count + 1.5) / 2) * 2
+        alignment_distance = int(((alignment_end - alignment_start) / alignment_gaps_count + 1.5) / 2) * 2
         alignment_start_remaining = alignment_end - (alignment_gaps_count - 1) * alignment_distance
         
         # calculate the coordinates of the center points of all finder pattern
         # the first row and the first column contain a different amount of alignment patttern because of the finder pattern
         # furthermore the distances to the remaining alignment patterns are different for some versions
-        alignment_position_generator_first_col = ((alignment_start, alignment_start_remaining + col_factor * alignment_distance) for col_factor in xrange(alignment_gaps_count - 1))
-        alignment_position_generator_first_row = ((alignment_start_remaining + row_factor * alignment_distance, alignment_start) for row_factor in xrange(alignment_gaps_count - 1))
+        alignment_position_generator_first_col = ((alignment_start, alignment_start_remaining + col_factor * alignment_distance) for col_factor in range(alignment_gaps_count - 1))
+        alignment_position_generator_first_row = ((alignment_start_remaining + row_factor * alignment_distance, alignment_start) for row_factor in range(alignment_gaps_count - 1))
         
         # the alignment pattern always have the same gaps so they are created in a nested loop (itertools.product)
         alignment_position_generator_remaining = ((alignment_start_remaining + row_factor * alignment_distance, 
                                                     alignment_start_remaining + col_factor * alignment_distance) 
-                                                    for row_factor, col_factor in itertools.product(xrange(alignment_gaps_count), repeat = 2))
+                                                    for row_factor, col_factor in itertools.product(range(alignment_gaps_count), repeat = 2))
 
         # chain all generators of alignment pattern to one
         alignment_position_generator = itertools.chain(alignment_position_generator_first_col, alignment_position_generator_first_row, alignment_position_generator_remaining)
@@ -102,7 +105,7 @@ def get_version_size(bit_matrix):
     A tuple containing the version of the qr code (1-40) and the lenght of a side of the squared associated data matrix
     '''
     size, _ = bit_matrix.shape
-    version = (size - 17) / 4
+    version = (size - 17) // 4
     return version, size
 
 
@@ -149,7 +152,7 @@ def extract_bit_array(bit_matrix, mask_index, output = False):
         lambda row, column : (row) % 2 == 0, 
         lambda row, column : (column) % 3 == 0, 
         lambda row, column : (row + column) % 3 == 0, 
-        lambda row, column : ( numpy.floor(row / 2) + numpy.floor(column / 3) ) % 2 == 0, 
+        lambda row, column : ((row // 2) + (column // 3) ) % 2 == 0, 
         lambda row, column : ((row * column) % 2) + ((row * column) % 3) == 0, 
         lambda row, column : ( ((row * column) % 2) + ((row * column) % 3) ) % 2 == 0, 
         lambda row, column : ( ((row + column) % 2) + ((row * column) % 3) ) % 2 == 0
@@ -164,8 +167,8 @@ def extract_bit_array(bit_matrix, mask_index, output = False):
     
     # create lists for going up and down a data row consisting of two pixel rows
     # this contains tulples of the horizontal offset 0 or 1 (column offset) and the vertical position (row)
-    index_column_gen_up   = [(i % 2, size - 1 - i / 2) for i in xrange(2 * size)]
-    index_column_gen_down = [(i % 2,            i / 2) for i in xrange(2 * size)]  
+    index_column_gen_up   = [(i % 2, size - 1 - i // 2) for i in range(2 * size)]
+    index_column_gen_down = [(i % 2,            i // 2) for i in range(2 * size)]  
     
     # create generators which can be used for alternating going up and down
     # this generates tuples of horizontal positions without the offset and the generators of going up or down a column
@@ -173,8 +176,8 @@ def extract_bit_array(bit_matrix, mask_index, output = False):
     # later the offset must be substracted from the horizontal position to get the real horizontal position
     # the vertical timing pattern is a irregularity for data extraction. Therefor generators for each side of the timing pattern are created
     # after creating both, the two generators are chained to one
-    offset_indexlist_tuple_gen_right = itertools.izip(xrange(size - 1, 7, -2), itertools.cycle([index_column_gen_up, index_column_gen_down]))
-    offset_indexlist_tuple_gen_left  = itertools.izip(xrange(5,        0, -2), itertools.cycle([index_column_gen_down, index_column_gen_up]))
+    offset_indexlist_tuple_gen_right = zip(range(size - 1, 7, -2), itertools.cycle([index_column_gen_up, index_column_gen_down]))
+    offset_indexlist_tuple_gen_left  = zip(range(5,        0, -2), itertools.cycle([index_column_gen_down, index_column_gen_up]))
     offset_indexlist_tuple_gen       = itertools.chain(offset_indexlist_tuple_gen_right, offset_indexlist_tuple_gen_left) 
 
     # the generated tuples of columns without offset and the lists of offsets and the row must be combined
@@ -187,7 +190,7 @@ def extract_bit_array(bit_matrix, mask_index, output = False):
 
     # Finally bits are extracted from the bit matrix in the right order
     # the generator of tuples of coordinates is converted to a tuple of lists with zip
-    raw_bit_array = bit_matrix[zip(*indexlist)]
+    raw_bit_array = bit_matrix[tuple(zip(*indexlist))]
    
     if output:
         return raw_bit_array, (mask_matrix, dataarea_indicator, bit_matrix)
@@ -225,10 +228,10 @@ def error_correction(raw_bit_array, version, ecc_level):
     block_count    = BLOCK_COUNT_LOOKUP   [version - 1][ecc_level] # the amount of blocks being interweaved 
     codeword_count = CODEWORD_COUNT_LOOKUP[version - 1][ecc_level] # the sum of data bytes without error correction overhead being containend in all blocks
     
-    bytes_count = raw_bit_array.size / 8 # the amount of entire bytes being contained in the bit array
-    short_codeword_block_bytes_count = codeword_count / block_count # the amount of data bytes without error correction overhead being contained in a short block
+    bytes_count = raw_bit_array.size // 8 # the amount of entire bytes being contained in the bit array
+    short_codeword_block_bytes_count = codeword_count // block_count # the amount of data bytes without error correction overhead being contained in a short block
     #long_codeword_block_bytes_count = short_block_bytes_count + 1 # not required. The amount of bytes in long blocks is 1 greater than the short blocks
-    errorcorrection_block_bytes_count = (bytes_count - codeword_count) / block_count # the amount of bytes in the error correction part of each block
+    errorcorrection_block_bytes_count = (bytes_count - codeword_count) // block_count # the amount of bytes in the error correction part of each block
 
     long_codeword_block_count = codeword_count % block_count    # The amount of long data blocks
     short_codeword_block_count = block_count - long_codeword_block_count # The amount of short data blocks
@@ -240,24 +243,24 @@ def error_correction(raw_bit_array, version, ecc_level):
     # The last index only has the distance long_codeword_block_count instead of block_count from the next to the last
     # Therefor two differnt generators are generated and chained
     short_codeword_block_index_list_gen = (range(block, short_codeword_block_bytes_count * block_count, block_count) 
-                                            for block in xrange(short_codeword_block_count))
-    long_codeword_block_index_list_gen  = (range(block, short_codeword_block_bytes_count * block_count, block_count) 
-                                            + [short_codeword_block_bytes_count * block_count + block] 
-                                            for block in xrange(short_codeword_block_count, block_count))
+                                            for block in range(short_codeword_block_count))
+    long_codeword_block_index_list_gen  = (itertools.chain(range(block, short_codeword_block_bytes_count * block_count, block_count), 
+                                             [short_codeword_block_bytes_count * block_count + block]) 
+                                            for block in range(short_codeword_block_count, block_count))
     codeword_block_index_list_gen = itertools.chain(short_codeword_block_index_list_gen, long_codeword_block_index_list_gen)
     
     # The errorcorrection blocks are all of the same size, have a regular distance and start after the all data blocks
-    errorcorrection_block_index_list_gen = (range(codeword_count + block, bytes_count, block_count) for block in xrange(block_count))
+    errorcorrection_block_index_list_gen = (range(codeword_count + block, bytes_count, block_count) for block in range(block_count))
 
     raw_byte_array = numpy.packbits(raw_bit_array)  # convert the array of bits to arrays of bytes
 
     # extract the data and the correction data for each block
-    codeword_errorcorrection_block_byte_list_gen = (raw_byte_array[block + correction_data] for block, correction_data in itertools.izip(codeword_block_index_list_gen, errorcorrection_block_index_list_gen))
+    codeword_errorcorrection_block_index_list_gen = (list(itertools.chain(block, correction_data)) for block, correction_data in zip(codeword_block_index_list_gen, errorcorrection_block_index_list_gen))
 
     # apply reedsolo errorcorrection to all blocks
     # the result is a generator of numpy arrays of corrected bytes
-    corrected_byte_list_gen = (reedsolo.rs_correct_msg(codeword_errorcorrection_block_byte_list, errorcorrection_block_bytes_count) 
-                                for codeword_errorcorrection_block_byte_list in codeword_errorcorrection_block_byte_list_gen)
+    corrected_byte_list_gen = (reedsolo.rs_correct_msg(raw_byte_array[codeword_errorcorrection_block_index_list], errorcorrection_block_bytes_count) 
+                                for codeword_errorcorrection_block_index_list in codeword_errorcorrection_block_index_list_gen)
 
     # concenate the bytes of each block to one array
     corrected_byte_array = numpy.fromiter(itertools.chain.from_iterable(corrected_byte_list_gen), dtype = numpy.uint8, count = codeword_count)
@@ -302,7 +305,7 @@ def extract_string(corrected_bit_array, version):
         data_beginn = 4 + length_code_length + next_block_start
         
         # the amount of complete words
-        word_count = char_count / CHARS_PER_WORD_LOOKUP[mode_index]
+        word_count = char_count // CHARS_PER_WORD_LOOKUP[mode_index]
         # and the amount of chars being in the incomplete last word. zero if it does not exist
         remaining_chars_count = char_count % CHARS_PER_WORD_LOOKUP[mode_index]
 
@@ -328,7 +331,7 @@ def extract_string(corrected_bit_array, version):
             CHAR_LOOKUP = [str(i) for i in range(10)] + [chr(65 + i) for i in range(26)] + list(' $%*+-./:')
 
             # extracting the complete words of 2 chars
-            result_string +=  "".join(CHAR_LOOKUP[item / 45] + CHAR_LOOKUP[item % 45] for item in int_list)
+            result_string +=  "".join(CHAR_LOOKUP[item // 45] + CHAR_LOOKUP[item % 45] for item in int_list)
 
             if remaining_chars_count > 0:
                 # extracting 1 remaining char in the incomplete word of 6 bits and append it to the result

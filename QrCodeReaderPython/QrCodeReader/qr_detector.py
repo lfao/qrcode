@@ -1,3 +1,6 @@
+from __future__ import division
+from builtins import range
+
 import numpy
 import cv2
 import itertools
@@ -15,7 +18,7 @@ def extract_matrix(image, output_size = None):
     A numpy matrix with boolean value for every point in the QR code
     '''
     #Definitions TopLeft, TopRight, BottomLeft, BottomRight are required for indexing of Finder Pattern itself or Finder Pattern corners
-    TL, TR, BL, BR = range(4) 
+    TL, TR, BL, BR = list(range(4)) 
 
     image_resized = cv2.resize(image, (600, 600))
     #image_resized = image;
@@ -36,7 +39,7 @@ def extract_matrix(image, output_size = None):
         return get_dept(hierachy[index][2]) + 1 if hierachy[index][2] >= 0 else 0 
 
     # finding Finder Pattern which is a 5 times nested contour
-    marks = [i for i in xrange(len(hierachy)) if get_dept(i) == 5]
+    marks = [i for i in range(len(hierachy)) if get_dept(i) == 5]
 
     if len(marks) != 3: # check if 3 and only 3 finder pattern have been found
         print("Detected {} Finder Pattern. Exact 3 are required!".format(len(marks)))
@@ -56,7 +59,7 @@ def extract_matrix(image, output_size = None):
 
     # calculating the center of the contour of each pattern
     moments_list = (cv2.moments(contours[mark]) for mark in marks)
-    unsorted_center_list = numpy.array([ (moments['m10']/moments['m00'], moments['m01']/moments['m00']) 
+    unsorted_center_list = numpy.array([ (moments['m10'] / moments['m00'], moments['m01'] / moments['m00']) 
                                    if moments['m00'] != 0 else (float('inf'), float('inf')) for moments in moments_list])
 
     # matching the Finter Pattern to the corners  TL, TR, BL
@@ -85,7 +88,7 @@ def extract_matrix(image, output_size = None):
         Returns:
         A generator for the lists of corners
         '''
-        for contour, center in itertools.izip(pattern_contour_list , pattern_center_list):
+        for contour, center in zip(pattern_contour_list , pattern_center_list):
             # creating triples of:  
             #   an tuple of bools indicating if they are up or down, left or right. Sorting these ascending will cause the order TL, TR, BL, BR
             #       therefore the sign of the crossproduct of two vectors is used: http://stackoverflow.com/questions/3838319/how-can-i-check-if-a-point-is-below-a-line-or-not
@@ -113,7 +116,7 @@ def extract_matrix(image, output_size = None):
     pattern_corner_list = numpy.array(list(pattern_corner_generator()))
     
     # calculating the number of pixels in the clean qr code. This must be very exact
-    pattern_average = numpy.mean([numpy.linalg.norm(pattern_corner_list[i] [j]  - pattern_corner_list[i] [k] ) for i in xrange(3) for j, k in [(TL,TR),(BL,BR),(TL,BL),(TR,BR)]])
+    pattern_average = numpy.mean([numpy.linalg.norm(pattern_corner_list[i] [j]  - pattern_corner_list[i] [k] ) for i in range(3) for j, k in [(TL,TR),(BL,BR),(TL,BL),(TR,BR)]])
     size_average    = numpy.mean([numpy.linalg.norm(pattern_corner_list[TL][TL] - pattern_corner_list[TR][TR]),  
                                   numpy.linalg.norm(pattern_corner_list[TL][BL] - pattern_corner_list[TR][BR]), 
                                   numpy.linalg.norm(pattern_corner_list[TL][TL] - pattern_corner_list[BL][BL]), 
@@ -127,7 +130,7 @@ def extract_matrix(image, output_size = None):
     temp_pixel_size = 8
     temp_warp_size = pixelcount * temp_pixel_size
     
-    if (pixelcount - 17) / 4 > 1: # check if the QR code has a version greater 1. Then it has a alignment pattern at the bottom right corner too
+    if (pixelcount - 17) // 4 > 1: # check if the QR code has a version greater 1. Then it has a alignment pattern at the bottom right corner too
         # trying to find this alignment pattern for warping
 
         alignment_area_delta = pixel_lenght * 8 # The width and height of the area for searching the contour of the finderpattern will be 2 * aligment_area_delta
@@ -139,14 +142,14 @@ def extract_matrix(image, output_size = None):
         estimated_alignment_center = (pattern_center_list[TR] + pattern_center_list[BL] - pattern_corner_list[TL][BR])
 
         # find possible alignment pattern
-        possible_alignment_index_list = (i for i in xrange(len(hierachy)) if get_dept(i) == 3)
+        possible_alignment_index_list = (i for i in range(len(hierachy)) if get_dept(i) == 3)
 
         # filter this with only checking if one contour point is inside a defined squared area close to the estimated center of the alignment pattern
         possible_alignment_index_list_prefiltered = (i for i in possible_alignment_index_list if all(numpy.abs(contours[i][0][0] - estimated_alignment_center) < alignment_area_delta))
         
         # calculate the center of the all possible finder pattern
         possible_alignment_moment_list = (cv2.moments(contours[i]) for i in possible_alignment_index_list_prefiltered)
-        possible_alignment_centers = [numpy.array([moments['m10']/moments['m00'], moments['m01']/moments['m00']]) for moments in possible_alignment_moment_list]
+        possible_alignment_centers = [numpy.array([moments['m10'] / moments['m00'], moments['m01'] / moments['m00']]) for moments in possible_alignment_moment_list]
 
     else: # version 1 contains no alignment pattern
         possible_alignment_centers = []
@@ -163,7 +166,7 @@ def extract_matrix(image, output_size = None):
         # This must be very exact
         tr_r_dif_vertical   = pattern_corner_list[TR][TR] - pattern_corner_list[TR][BR]
         bl_b_dif_horizontal = pattern_corner_list[BL][BL] - pattern_corner_list[BL][BR]   
-        t = float(numpy.cross(pattern_corner_list[BL][BL] - pattern_corner_list[TR][TR], bl_b_dif_horizontal)) / numpy.cross(tr_r_dif_vertical, bl_b_dif_horizontal)
+        t = numpy.cross(pattern_corner_list[BL][BL] - pattern_corner_list[TR][TR], bl_b_dif_horizontal) / numpy.cross(tr_r_dif_vertical, bl_b_dif_horizontal)
         br_br = pattern_corner_list[TR][TR] + t * tr_r_dif_vertical
 
         source = numpy.array([pattern_corner_list[TL][TL], pattern_corner_list[TR][TR], br_br, pattern_corner_list[BL][BL]], dtype = "float32")
@@ -185,7 +188,7 @@ def extract_matrix(image, output_size = None):
         cv2.imshow("resized",cv2.resize(image_resized, (output_size,output_size)))
         cv2.imshow("gray",cv2.resize(image_gray , (output_size,output_size)))
         cv2.imshow("canny", cv2.resize(edges, (output_size,output_size)))
-        if (pixelcount - 17) / 4 > 1: 
+        if (pixelcount - 17) // 4 > 1: 
             # getting the start and the end of the slice for each coordinate of the alignment center
             # (numpy style adding a 2 element column vector to a 2 elment row vector will create a matrix with 4 elements) 
             slice_coordinates = (numpy.transpose([estimated_alignment_center]) + [-alignment_area_delta, alignment_area_delta]).astype(int) 
