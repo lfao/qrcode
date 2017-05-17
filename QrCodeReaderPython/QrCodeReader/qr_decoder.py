@@ -158,15 +158,9 @@ def extract_bit_array(bit_matrix, mask_index, output = False):
     version, size = get_version_size(bit_matrix)
 
     dataarea_indicator = get_dataarea_indicator(version)  
-    mask_matrix = numpy.fromfunction(MASK_FUNCTIONS[mask_index], bit_matrix.shape) # create the raw mask_matrix
+    mask_matrix = numpy.fromfunction(MASK_FUNCTIONS[mask_index], bit_matrix.shape, dtype = int) # create the raw mask_matrix
     mask_matrix = numpy.logical_and(mask_matrix, dataarea_indicator, mask_matrix)  # remove the parts which contain no data
     bit_matrix = numpy.logical_xor(bit_matrix, mask_matrix, bit_matrix) # invert the pixels of the orignal image, which are indicated by the mask
-    
-    if output:
-        import cv2
-        cv2.imshow("mask", cv2.resize(numpy.logical_not(mask_matrix).astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))
-        cv2.imshow("ausgeblendet", cv2.resize(dataarea_indicator.astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))
-        cv2.imshow("data", cv2.resize(numpy.logical_not(bit_matrix).astype(float), (size * 8, size * 8), interpolation = cv2.INTER_NEAREST))
     
     # create lists for going up and down a data row consisting of two pixel rows
     # this contains tulples of the horizontal offset 0 or 1 (column offset) and the vertical position (row)
@@ -195,7 +189,10 @@ def extract_bit_array(bit_matrix, mask_index, output = False):
     # the generator of tuples of coordinates is converted to a tuple of lists with zip
     raw_bit_array = bit_matrix[zip(*indexlist)]
    
-    return raw_bit_array
+    if output:
+        return raw_bit_array, (mask_matrix, dataarea_indicator, bit_matrix)
+    else:
+        return raw_bit_array
 
 def error_correction(raw_bit_array, version, ecc_level):
     '''
@@ -254,12 +251,16 @@ def error_correction(raw_bit_array, version, ecc_level):
 
     raw_byte_array = numpy.packbits(raw_bit_array)  # convert the array of bits to arrays of bytes
 
-    # extract the data and the correction data for each block and apply reedsolo errorcorrection at all blocks
+    # extract the data and the correction data for each block
+    codeword_errorcorrection_block_byte_list_gen = (raw_byte_array[block + correction_data] for block, correction_data in itertools.izip(codeword_block_index_list_gen, errorcorrection_block_index_list_gen))
+
+    # apply reedsolo errorcorrection to all blocks
     # the result is a generator of numpy arrays of corrected bytes
-    corrected_byte_list_gen = (reedsolo.rs_correct_msg(raw_byte_array[block + correction_data], errorcorrection_block_bytes_count)
-                       for block, correction_data in itertools.izip(codeword_block_index_list_gen, errorcorrection_block_index_list_gen))
+    corrected_byte_list_gen = (reedsolo.rs_correct_msg(codeword_errorcorrection_block_byte_list, errorcorrection_block_bytes_count) 
+                                for codeword_errorcorrection_block_byte_list in codeword_errorcorrection_block_byte_list_gen)
+
     # concenate the bytes of each block to one array
-    corrected_byte_array = numpy.fromiter(itertools.chain.from_iterable(corrected_byte_list_gen), dtype = numpy.uint8)
+    corrected_byte_array = numpy.fromiter(itertools.chain.from_iterable(corrected_byte_list_gen), dtype = numpy.uint8, count = codeword_count)
     
     # extract the bits from the bytes
     corrected_bit_array = numpy.unpackbits(corrected_byte_array)

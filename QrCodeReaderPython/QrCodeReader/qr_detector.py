@@ -3,6 +3,7 @@ import cv2
 import itertools
 import operator
 
+
 def extract_matrix(image, output_size = None):
     '''
     Extract a matrix of boolean values for a QR Code.
@@ -16,7 +17,7 @@ def extract_matrix(image, output_size = None):
     #Definitions TopLeft, TopRight, BottomLeft, BottomRight are required for indexing of Finder Pattern itself or Finder Pattern corners
     TL, TR, BL, BR = range(4) 
 
-    image_resized = cv2.resize(image, (600, 600)) # 12 ok
+    image_resized = cv2.resize(image, (600, 600))
     #image_resized = image;
     image_gray = cv2.cvtColor(image_resized, cv2.COLOR_RGB2GRAY)
     edges = cv2.Canny(image_gray, 100, 200)
@@ -66,7 +67,7 @@ def extract_matrix(image, output_size = None):
                                 # https://math.stackexchange.com/questions/285346/why-does-cross-product-tell-us-about-clockwise-or-anti-clockwise-rotation
 
     # take the pattern tripple of the one with the greatest distance between BottomLeft and TopRight
-    _ , patternindex_triple = max(distance_patternlist_tuple_list) 
+    _, patternindex_triple = max(distance_patternlist_tuple_list) 
 
     # Reordering the and selecting the reqired contours and centers
     pattern_contour_list = (contours   [marks   [pattern]] for pattern in patternindex_triple)
@@ -122,19 +123,14 @@ def extract_matrix(image, output_size = None):
     pixelcount = int(round((pixelestimated - 17) / 4)) * 4 + 17 # only pixelcounts of 4 * Version + 17 are allowed => round to this number
     pixel_lenght = size_average / pixelcount
 
+    # defining the warp destination square which is 8*8 times the number of pixels in the clean qr code
+    temp_pixel_size = 8
+    temp_warp_size = pixelcount * temp_pixel_size
     
-    # extrapolation of the bottom right corner http://stackoverflow.com/questions/563198/how-do-you-detect-where-two-line-segments-intersect
-    # This must be very exact
-    tr_r_dif_vertical = pattern_corner_list[TR][TR] - pattern_corner_list[TR][BR]
-    bl_b_dif_horizontal = pattern_corner_list[BL][BL] - pattern_corner_list[BL][BR]   
-    t = float(numpy.cross(pattern_corner_list[BL][BL] - pattern_corner_list[TR][TR], bl_b_dif_horizontal)) / numpy.cross(tr_r_dif_vertical, bl_b_dif_horizontal)
-    br_br = pattern_corner_list[TR][TR] + t * tr_r_dif_vertical     
-    
-    found_br_alignment_center = False
-    if (pixelcount - 17) / 4 > 1: # check if the QR code has a version greater 1. Then it has a alignment pattern at the bottom right corner too. Use this for a better extrapolation
-        # trying to find this alignment pattern and improve the value.
+    if (pixelcount - 17) / 4 > 1: # check if the QR code has a version greater 1. Then it has a alignment pattern at the bottom right corner too
+        # trying to find this alignment pattern for warping
 
-        alignment_area_delta = (pixel_lenght) * 6 # The width and height of the area for searching the contour of the finderpattern will be 2 * aligment_area_delta
+        alignment_area_delta = pixel_lenght * 8 # The width and height of the area for searching the contour of the finderpattern will be 2 * aligment_area_delta
 
         # calculating the middle of the QR code with the centers of the pattern TR and BL 
         # calculating the vector from pattern_corner_list[TL][BR] to the middle of the QR code
@@ -142,56 +138,44 @@ def extract_matrix(image, output_size = None):
         # this coordinates are a half pixel away from the center. the area of searching this center should be big enought to handle this offset
         estimated_alignment_center = (pattern_center_list[TR] + pattern_center_list[BL] - pattern_corner_list[TL][BR])
 
-        # getting the start and the end of the slice for each coordinate of the alignment center
-        # (numpy style adding a 2 element column vector to a 2 elment row vector will create a matrix with 4 elements) 
-        slice_coordinates = (numpy.transpose([estimated_alignment_center]) + [-alignment_area_delta, alignment_area_delta]).astype(int) 
-        slice_coordinates[:,0] = numpy.maximum(slice_coordinates[:,0], [0,0])
-        slice_coordinates[:,1] = numpy.minimum(slice_coordinates[:,1], edges.shape)
+        # find possible alignment pattern
+        possible_alignment_index_list = (i for i in xrange(len(hierachy)) if get_dept(i) == 3)
 
-        area = (slice(*slice_coordinates[1]), slice(*slice_coordinates[0])) # get slice obejects for the search area
-        # finding contours in the selected area
-        _, br_alignment_contours, [br_alignment_hierachy] = cv2.findContours(edges[area], cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        # filter this with only checking if one contour point is inside a defined squared area close to the estimated center of the alignment pattern
+        possible_alignment_index_list_prefiltered = (i for i in possible_alignment_index_list if all(numpy.abs(contours[i][0][0] - estimated_alignment_center) < alignment_area_delta))
         
-        def alignment_get_dept(index):
-            '''
-            Looks for the amount of childs in alignment_hierachy for a certain index
-            Keyword arguments:
-            index -- The index in hierachy to check
-            Returns:
-            The amount of childs of the selected index
-            '''
-            # the child is stored in hierachy at inner index = 2, it is negative if it has no child
-            return alignment_get_dept(br_alignment_hierachy[index][2]) + 1 if br_alignment_hierachy[index][2] >= 0 else 0 
+        # calculate the center of the all possible finder pattern
+        possible_alignment_moment_list = (cv2.moments(contours[i]) for i in possible_alignment_index_list_prefiltered)
+        possible_alignment_centers = [numpy.array([moments['m10']/moments['m00'], moments['m01']/moments['m00']]) for moments in possible_alignment_moment_list]
 
-        # find a 3 times nested contour which is the alignment pattern
-        alignment_index = [i for i in xrange(len(br_alignment_hierachy)) if alignment_get_dept(i) == 3]
+    else: # version 1 contains no alignment pattern
+        possible_alignment_centers = []
 
-        if 1 == len(alignment_index): # check whether exact one pattern has been found
-            # calculate the center of the alignment pattern
-            br_alignment_moments = cv2.moments(br_alignment_contours[alignment_index[0]])
-            br_alignment_center = slice_coordinates[:,0] + [br_alignment_moments['m10']/br_alignment_moments['m00'], br_alignment_moments['m01']/br_alignment_moments['m00']]
-            found_br_alignment_center = True
-    
-    # defining the warp destination square which is 8*8 times the number of pixels in the clean qr code
-    temp_pixel_size = 8
-    temp_warp_size = pixelcount * temp_pixel_size
-    boarder = temp_pixel_size * 0
 
     # defining the warp source and destination quadrangle
-    if found_br_alignment_center: # if we found the alignment pattern at bottom right, use this
+    if possible_alignment_centers: # if we found the alignment pattern at bottom right, use this
+        # if there are several possibilities for the alignment pattern, use the closest to the estimation
+        _, br_alignment_center = min((numpy.linalg.norm(center - estimated_alignment_center), center) for center in possible_alignment_centers)
         source = numpy.array([pattern_corner_list[TL][TL], pattern_corner_list[TR][TR], br_alignment_center, pattern_corner_list[BL][BL]], dtype = "float32")
-        destination = numpy.array([(boarder, boarder), (temp_warp_size + boarder, boarder), (temp_warp_size + boarder - temp_pixel_size * 6.5, temp_warp_size + boarder - temp_pixel_size * 6.5), (0 + boarder, temp_warp_size + boarder)], dtype = "float32")
+        destination = numpy.array([(0, 0), (temp_warp_size, 0), (temp_warp_size - temp_pixel_size * 6.5, temp_warp_size - temp_pixel_size * 6.5), (0, temp_warp_size)], dtype = "float32")
     else: # otherwise use the extrapolated bottom right corner
+        # extrapolation of the bottom right corner http://stackoverflow.com/questions/563198/how-do-you-detect-where-two-line-segments-intersect
+        # This must be very exact
+        tr_r_dif_vertical   = pattern_corner_list[TR][TR] - pattern_corner_list[TR][BR]
+        bl_b_dif_horizontal = pattern_corner_list[BL][BL] - pattern_corner_list[BL][BR]   
+        t = float(numpy.cross(pattern_corner_list[BL][BL] - pattern_corner_list[TR][TR], bl_b_dif_horizontal)) / numpy.cross(tr_r_dif_vertical, bl_b_dif_horizontal)
+        br_br = pattern_corner_list[TR][TR] + t * tr_r_dif_vertical
+
         source = numpy.array([pattern_corner_list[TL][TL], pattern_corner_list[TR][TR], br_br, pattern_corner_list[BL][BL]], dtype = "float32")
-        destination = numpy.array([(boarder, boarder), (temp_warp_size + boarder, boarder), (temp_warp_size + boarder, temp_warp_size + boarder), (0 + boarder, temp_warp_size + boarder)], dtype = "float32")
+        destination = numpy.array([(0, 0), (temp_warp_size, 0), (temp_warp_size, temp_warp_size), (0, temp_warp_size)], dtype = "float32")
    
     # doing the warping and thresholding
     warp_matrix = cv2.getPerspectiveTransform(source, destination);
-    bigqr_nottresholded = cv2.warpPerspective(image_gray, warp_matrix, (temp_warp_size + 2 * boarder, temp_warp_size + 2 * boarder));	
+    bigqr_nottresholded = cv2.warpPerspective(image_gray, warp_matrix, (temp_warp_size, temp_warp_size));	
     bigqr = cv2.adaptiveThreshold(bigqr_nottresholded, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, temp_pixel_size * 10 + 1, 2)
 
     # resizing to the real amount of pixels and thresholding again
-    qr_notresholded = cv2.resize(bigqr[boarder : temp_warp_size + boarder, boarder : temp_warp_size + boarder], (pixelcount, pixelcount))
+    qr_notresholded = cv2.resize(bigqr[0 : temp_warp_size, 0 : temp_warp_size], (pixelcount, pixelcount))
     a ,qr = cv2.threshold(qr_notresholded, 127, 255, cv2.THRESH_BINARY);
     
     # extracting the data
@@ -202,11 +186,16 @@ def extract_matrix(image, output_size = None):
         cv2.imshow("gray",cv2.resize(image_gray , (output_size,output_size)))
         cv2.imshow("canny", cv2.resize(edges, (output_size,output_size)))
         if (pixelcount - 17) / 4 > 1: 
+            # getting the start and the end of the slice for each coordinate of the alignment center
+            # (numpy style adding a 2 element column vector to a 2 elment row vector will create a matrix with 4 elements) 
+            slice_coordinates = (numpy.transpose([estimated_alignment_center]) + [-alignment_area_delta, alignment_area_delta]).astype(int) 
+            slice_coordinates[:,0] = numpy.maximum(slice_coordinates[:,0], [0,0])
+            slice_coordinates[:,1] = numpy.minimum(slice_coordinates[:,1], edges.shape)
+            area = (slice(*slice_coordinates[1]), slice(*slice_coordinates[0])) # get slice obejects for the search area
             cv2.imshow("alignment pattern", edges[area]) 
 
         cv2.imshow("bigqr_nottresholded", bigqr_nottresholded)
         cv2.imshow("bigqr", bigqr)
         cv2.imshow("qr small", qr, )
         cv2.imshow("qr", cv2.resize(qr, (temp_warp_size, temp_warp_size), interpolation = cv2.INTER_NEAREST))
-        cv2.imwrite("output.jpg",qr)
     return numpy.logical_not(inverted_data)
