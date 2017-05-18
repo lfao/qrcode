@@ -1,6 +1,9 @@
 from __future__ import division
 from future.utils import raise_from
-from builtins import zip, chr, str, range
+from builtins import zip
+from builtins import chr
+from builtins import str
+from builtins import range
 
 import numpy
 import itertools
@@ -206,7 +209,7 @@ def extract_bit_array(bit_matrix, mask_index, output=False):
 	# the generator of tuples of coordinates is converted to a tuple of lists
 	# with zip
 	raw_bit_array = bit_matrix[tuple(zip(*indexlist))]
-   
+
 	if output:
 		return raw_bit_array, (mask_matrix, dataarea_indicator, bit_matrix)
 	else:
@@ -245,33 +248,19 @@ def error_correction(raw_bit_array, version, ecc_level):
 																   # all blocks
 	
 	bytes_count = raw_bit_array.size // 8 # the amount of entire bytes being contained in the bit array
-	short_codeword_block_bytes_count = codeword_count // block_count # the amount of data bytes without error correction overhead being contained
-																	 # in a
-																																		 # short
-																																																			 # block
-	#long_codeword_block_bytes_count = short_block_bytes_count + 1 # not
-																		#required.
-																																			#The
-																																																				#amount
-																																																				#of
-																																																				#bytes
-																																																				#in
-																																																				#long
-																																																				#blocks
-																																																				#is
-																																																				#1
-																																																				#greater
-																																																				#than
-																																																				#the
-																																																				#short
-																																																				#blocks
-	errorcorrection_block_bytes_count = (bytes_count - codeword_count) // block_count # the amount of bytes in the error correction part of each block
+	# the amount of data bytes without error correction overhead being contained in a short block
+	short_codeword_block_bytes_count = codeword_count // block_count 
+	#long_codeword_block_bytes_count = short_block_bytes_count + 1 
+	# not required. The amount of bytes in long blocks is 1 greater than the short blocks
+
+	# the amount of bytes in the error correction part of each block
+	errorcorrection_block_bytes_count = (bytes_count - codeword_count) // block_count 
 
 	long_codeword_block_count = codeword_count % block_count    # The amount of long data blocks
 	short_codeword_block_count = block_count - long_codeword_block_count # The amount of short data blocks
 	 
 
-	# generators of indices for the datablock.
+	# generators of indices for the data block.
 	# The indices of the short blocks are completely regular and have always
 	# the
 	# distance block_count
@@ -295,7 +284,7 @@ def error_correction(raw_bit_array, version, ecc_level):
 	# extract the data and the correction data for each block
 	codeword_errorcorrection_block_index_list_gen = (list(itertools.chain(block, correction_data)) for block, correction_data in zip(codeword_block_index_list_gen, errorcorrection_block_index_list_gen))
 
-	# apply reedsolo error correction to all blocks
+	# apply reed Solomon error correction to all blocks
 	# the result is a generator of numpy arrays of corrected bytes
 	corrected_byte_list_gen = (reedsolo.rs_correct_msg(raw_byte_array[codeword_errorcorrection_block_index_list], errorcorrection_block_bytes_count) 
 								for codeword_errorcorrection_block_index_list in codeword_errorcorrection_block_index_list_gen)
@@ -378,10 +367,10 @@ def extract_string(corrected_bit_array, version):
 				if remaining_chars_count > 0:
 					# extracting 1 remaining char in the incomplete word of 6
 					# bits and append it to the result
-					result_string += CHAR_LOOKUP[extract_int(corrected_bit_array, remaining_chars_start, 6) % 45]
+					result_string += CHAR_LOOKUP[extract_int(corrected_bit_array, remaining_chars_start, 6)]
 				next_block_start = remaining_chars_start + remaining_chars_count * 6
 
-			elif mode_index == 2: # byte mode - words of 8 bits contain 1 char (ascii)
+			elif mode_index == 2: # byte mode - words of 8 bits contain 1 char (ASCII)
 				# extracting words of 1 chars.  Since there is only 1 char per
 												 # word, no incomplete words
 																				  # exist

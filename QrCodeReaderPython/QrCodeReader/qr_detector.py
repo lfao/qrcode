@@ -62,8 +62,7 @@ def extract_matrix(image, output_size=None):
 
 	# calculating the center of the contour of each pattern
 	moments_list = (cv2.moments(contours[mark]) for mark in marks)
-	unsorted_center_list = numpy.array([ (moments['m10'] / moments['m00'], moments['m01'] / moments['m00']) 
-								   if moments['m00'] != 0 else (float('inf'), float('inf')) for moments in moments_list])
+	unsorted_center_list = [numpy.array([moments['m10'], moments['m01']]) / moments['m00'] for moments in moments_list]
 
 	# matching the Finder Pattern to the corners TL, TR, BL
 	distance_patternlist_tuple_list = ((numpy.linalg.norm(unsorted_center_list[patternindex_triple[BL]] - unsorted_center_list[patternindex_triple[TR]]), patternindex_triple) # generating a tuple of distance and the patterntriple
@@ -126,9 +125,9 @@ def extract_matrix(image, output_size=None):
 	
 	# creating a 2D numpy matrix whose first index is the Finder Pattern and
 	# the second index is the corner
-	# [patternindex][cornerindex]
-	# patternindices are TL, TR, BL
-	# conrerindices are TL, TR, BL, BR
+	# [pattern index][corner index]
+	# pattern indices are TL, TR, BL
+	# corner indices are TL, TR, BL, BR
 	pattern_corner_list = numpy.array(list(pattern_corner_generator()))
 	
 	# calculating the number of pixels in the clean qr code.  This must be very
@@ -140,7 +139,7 @@ def extract_matrix(image, output_size=None):
 								  numpy.linalg.norm(pattern_corner_list[TL][TR] - pattern_corner_list[BL][BR])])
 	
 	estimated_pixel_count = size_average / pattern_average * 7 # the width and the height of Finder Pattern is 7.  Use the rule of three
-	version = int(round((estimated_pixel_count - 17) / 4)) # only pixelcounts of 4 * Version + 17 are allowed => round to this number
+	version = int(round((estimated_pixel_count - 17) / 4)) # only estimated_pixel_count of 4 * Version + 17 are allowed => round to this number
 	if not 0 < version <= 40:
 		raise QrDetectorError('Calculated version {} is not between 1 and 40!'.format(version))
 
@@ -156,9 +155,10 @@ def extract_matrix(image, output_size=None):
 					# pattern at the bottom right corner too
 		# trying to find this alignment pattern for warping
 
-		alignment_area_delta = pixel_lenght * 8 # The width and height of the area for searching the contour of the
-												# finder pattern will be 2 *
-																							   # aligment_area_delta
+
+		# The width and height of the area for searching the contour of the
+		# finder pattern will be 2 * aligment_area_delta
+		alignment_area_delta = pixel_lenght * 8 
 
 		# calculating the middle of the QR code with the centers of the pattern
 		# TR and BL
@@ -180,7 +180,7 @@ def extract_matrix(image, output_size=None):
 		
 		# calculate the center of the all possible finder pattern
 		possible_alignment_moment_list = (cv2.moments(contours[i]) for i in possible_alignment_index_list_prefiltered)
-		possible_alignment_centers = [numpy.array([moments['m10'] / moments['m00'], moments['m01'] / moments['m00']]) for moments in possible_alignment_moment_list]
+		possible_alignment_centers = [numpy.array([moments['m10'], moments['m01']]) / moments['m00'] for moments in possible_alignment_moment_list]
 
 	else: # version 1 contains no alignment pattern
 		possible_alignment_centers = []
@@ -203,7 +203,7 @@ def extract_matrix(image, output_size=None):
 
 		source = numpy.array([pattern_corner_list[TL][TL], pattern_corner_list[TR][TR], br_br, pattern_corner_list[BL][BL]], dtype = numpy.float32)
 		destination = numpy.array([(0, 0), (temp_warp_size, 0), (temp_warp_size, temp_warp_size), (0, temp_warp_size)], dtype = numpy.float32)
-   
+
 	# doing the warping and thresholding
 	warp_matrix = cv2.getPerspectiveTransform(source, destination)
 	bigqr_nottresholded = cv2.warpPerspective(image_gray, warp_matrix, (temp_warp_size, temp_warp_size))	
@@ -217,9 +217,9 @@ def extract_matrix(image, output_size=None):
 	inverted_data = numpy.asarray(qr, dtype = numpy.bool)
 
 	if output_size:
-		cv2.imshow('resized',cv2.resize(image_resized, (output_size,output_size)))
-		cv2.imshow('gray',cv2.resize(image_gray , (output_size,output_size)))
-		cv2.imshow('canny', cv2.resize(edges, (output_size,output_size)))
+		cv2.imshow('1 resized',cv2.resize(image_resized, (output_size,output_size)))
+		cv2.imshow('2 gray',cv2.resize(image_gray , (output_size,output_size)))
+		cv2.imshow('3 canny', cv2.resize(edges, (output_size,output_size)))
 		if version > 1: 
 			# getting the start and the end of the slice for each coordinate of
 			# the alignment center
@@ -229,10 +229,10 @@ def extract_matrix(image, output_size=None):
 			slice_coordinates[:,0] = numpy.maximum(slice_coordinates[:,0], [0,0])
 			slice_coordinates[:,1] = numpy.minimum(slice_coordinates[:,1], edges.shape)
 			area = (slice(*slice_coordinates[1]), slice(*slice_coordinates[0])) # get slice objects for the search area
-			cv2.imshow('alignment pattern', edges[area]) 
+			cv2.imshow('alignment pattern searching area', edges[area]) 
 
-		cv2.imshow('bigqr_nottresholded', bigqr_nottresholded)
-		cv2.imshow('bigqr', bigqr)
-		cv2.imshow('qr small', qr,)
-		cv2.imshow('qr', cv2.resize(qr, (temp_warp_size, temp_warp_size), interpolation = cv2.INTER_NEAREST))
+		cv2.imshow('4 big qr nottresholded', bigqr_nottresholded)
+		cv2.imshow('5 big qr', bigqr)
+		cv2.imshow('6 qr small', qr,)
+		cv2.imshow('7 qr', cv2.resize(qr, (temp_warp_size, temp_warp_size), interpolation = cv2.INTER_NEAREST))
 	return numpy.logical_not(inverted_data)
