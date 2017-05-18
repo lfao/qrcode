@@ -45,11 +45,6 @@ def extract_matrix(image, debug=False):
             selected_contours = [contours[i] for i in marks]
             cv2.drawContours(image_pattern, selected_contours, -1, (0,255,0), 1)
 
-            # marking the alignment pattern search area
-            alignment_area_tl = tuple((estimated_alignment_center - alignment_area_delta).astype(int))
-            alignment_area_br = tuple((estimated_alignment_center + alignment_area_delta).astype(int))
-            cv2.rectangle(image_pattern, alignment_area_tl, alignment_area_br, (0,0,255))
-
             # marking the alignment pattern center
             cv2.circle(image_pattern, tuple(br_alignment_center.astype(int)), 2, (0,0,255), -1)
         except NameError:
@@ -196,11 +191,6 @@ def extract_matrix(image, debug=False):
         # pattern at the bottom right corner, too
         # trying to find this alignment pattern for warping
 
-
-        # The width and height of the area for searching the contour of the
-        # finder pattern will be 2 * aligment_area_delta
-        alignment_area_delta = pixel_lenght * 8 
-
         # calculating the middle of the qr code with the centers of the pattern
         # TR and BL
         # calculating the vector from pattern_corner_list[TL][BR] to the middle
@@ -214,13 +204,8 @@ def extract_matrix(image, debug=False):
         # finding possible alignment pattern
         possible_alignment_index_list = (i for i in range(len(hierarchy)) if get_dept(i) == 3)
 
-        # filtering this by only checking if one contour point is inside a
-        # defined squared area close to the estimated center of the alignment
-        # pattern
-        possible_alignment_index_list_prefiltered = (i for i in possible_alignment_index_list if all(numpy.abs(contours[i][0][0] - estimated_alignment_center) < alignment_area_delta))
-        
         # calculating the center of all possible finder pattern
-        possible_alignment_moment_list = (cv2.moments(contours[i]) for i in possible_alignment_index_list_prefiltered)
+        possible_alignment_moment_list = (cv2.moments(contours[i]) for i in possible_alignment_index_list)
         possible_alignment_centers = [numpy.array([moments['m10'], moments['m01']]) / moments['m00'] for moments in possible_alignment_moment_list]
 
     else: # version 1 contains no alignment patterns
