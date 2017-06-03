@@ -171,7 +171,7 @@ def extract_bit_array(bit_matrix, mask_index, debug=False):
     dataarea_indicator = get_dataarea_indicator(version)  
     mask_matrix = numpy.fromfunction(MASK_FUNCTIONS[mask_index], bit_matrix.shape, dtype = int) # creating the raw mask_matrix
     mask_matrix = numpy.logical_and(mask_matrix, dataarea_indicator, mask_matrix)  # removing the parts which contain no data
-    bit_matrix = numpy.logical_xor(bit_matrix, mask_matrix, bit_matrix) # inverting the pixels of the original image, which are indicated by the mask
+    bit_matrix_unmasked = numpy.logical_xor(bit_matrix, mask_matrix) # inverting the pixels of the original image, which are indicated by the mask
     
     # creating lists for going up and down a data row consisting of two pixel
     # rows
@@ -208,10 +208,10 @@ def extract_bit_array(bit_matrix, mask_index, debug=False):
     # Finally bits are extracted from the bit matrix in the right order
     # the generator of tuples of coordinates is converted to a tuple of lists
     # with zip
-    raw_bit_array = bit_matrix[tuple(zip(*indexlist))]
+    raw_bit_array = bit_matrix_unmasked[tuple(zip(*indexlist))]
 
     if debug:
-        return raw_bit_array, (mask_matrix, dataarea_indicator, bit_matrix)
+        return raw_bit_array, (mask_matrix, dataarea_indicator, bit_matrix_unmasked)
     else:
         return raw_bit_array
 
@@ -279,7 +279,8 @@ def error_correction(raw_bit_array, version, ecc_level):
     errorcorrection_block_index_list_gen = (range(codeword_count + block, bytes_count, block_count) for block in range(block_count))
 
     # extracting the data and the correction data for each block
-    codeword_errorcorrection_block_index_list_gen = (list(itertools.chain(block, correction_data)) for block, correction_data in zip(codeword_block_index_list_gen, errorcorrection_block_index_list_gen))
+    codeword_errorcorrection_block_index_list_gen = (list(itertools.chain(block, correction_data)) 
+                                                     for block, correction_data in zip(codeword_block_index_list_gen, errorcorrection_block_index_list_gen))
 
     raw_byte_array = numpy.packbits(raw_bit_array)  # converting the array of bits to arrays of bytes
 

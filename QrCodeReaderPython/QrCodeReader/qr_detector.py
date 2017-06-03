@@ -65,7 +65,7 @@ def extract_matrix(image, debug=False):
             image_list.append((image_bigqr_notthresholded, '5 big qr not thresholded'))
             image_list.append((image_bigqr, '6 big qr'))
             image_list.append((image_qr, '7 small qr'))
-            image_list.append((cv2.resize(qr, (temp_warp_size, temp_warp_size), interpolation = cv2.INTER_NEAREST), '8 qr'))
+            image_list.append((cv2.resize(image_qr, (temp_warp_size, temp_warp_size), interpolation = cv2.INTER_NEAREST), '8 qr'))
         except NameError:
             pass
         return image_list
@@ -131,6 +131,7 @@ def extract_matrix(image, debug=False):
         A generator for the lists of corners
         '''
         for contour, center in zip(pattern_contour_list , pattern_center_list):
+
             # creating triples of:
             #   a tuple of booleans indicating if they are up or down, left or
             #       right.  Sorting these ascending will cause the order TL, TR,
@@ -141,7 +142,6 @@ def extract_matrix(image, debug=False):
             # vectors is used:
             # http://stackoverflow.com/questions/3838319/how-can-i-check-if-a-point-is-below-a-line-or-not
             # the distance between this contour point and the finder pattern
-
             categorie_distance_point_triple_list = (((numpy.cross(horizontal_vector, contour_point - center) > 0, numpy.cross(verticial_vector, contour_point - center) < 0), 
                                                       numpy.linalg.norm(contour_point - center), contour_point) for [contour_point] in contour)
             
